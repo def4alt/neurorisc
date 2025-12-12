@@ -47,18 +47,29 @@ impl Network {
         let events_now = std::mem::take(&mut self.events[current_slot]);
 
         for (id, weight) in events_now {
-            self.neurons[id].i_syn += weight;
+            if weight >= 0.0 {
+                self.neurons[id].g_exc += weight;
+            } else {
+                self.neurons[id].g_inh -= weight;
+            }
         }
 
         for neuron in &mut self.neurons {
-            let i_decay = neuron.i_syn * (dt / neuron.tau_syn);
-            neuron.i_syn -= i_decay;
+            let decay_exc = neuron.g_exc * (dt / neuron.tau_syn);
+            let decay_inh = neuron.g_inh * (dt / neuron.tau_syn);
+
+            neuron.g_exc -= decay_exc;
+            neuron.g_inh -= decay_inh;
 
             if neuron.refractory_left == 0 {
-                let leak = -(neuron.v - neuron.v_rest);
-                let total_drive = leak + neuron.i_syn;
+                let i_leak = -(neuron.v - neuron.v_rest);
 
-                neuron.v += total_drive * (dt / neuron.tau_m);
+                let i_exc = neuron.g_exc * (neuron.e_exc - neuron.v);
+                let i_inh = neuron.g_inh * (neuron.e_inh - neuron.v);
+
+                let total_current = i_leak + i_exc + i_inh;
+
+                neuron.v += total_current * (dt / neuron.tau_m);
             }
         }
 
@@ -99,7 +110,10 @@ impl Network {
             theta: config.theta,
             refractory_period: config.refractory_period,
             refractory_left: 0,
-            i_syn: 0.0,
+            g_exc: 0.0,
+            g_inh: 0.0,
+            e_exc: config.e_exc,
+            e_inh: config.e_inh,
             tau_syn: config.tau_syn,
         });
 

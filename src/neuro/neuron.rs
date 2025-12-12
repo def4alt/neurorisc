@@ -16,7 +16,10 @@ pub struct Neuron {
     pub theta: f32,
     pub refractory_period: u32,
     pub refractory_left: u32,
-    pub i_syn: f32,
+    pub g_exc: f32,
+    pub g_inh: f32,
+    pub e_exc: f32,
+    pub e_inh: f32,
     pub tau_syn: f32,
 }
 
@@ -28,6 +31,8 @@ pub struct NeuronConfig {
     pub theta: f32,
     pub refractory_period: u32,
     pub tau_syn: f32,
+    pub e_exc: f32,
+    pub e_inh: f32,
 }
 
 impl Default for NeuronConfig {
@@ -39,6 +44,8 @@ impl Default for NeuronConfig {
             theta: -50.0,         // Firing threshold (mV)
             refractory_period: 5, // Absolute refractory period (timesteps/ms)
             tau_syn: 5.0,
+            e_exc: 0.0,
+            e_inh: -70.0,
         }
     }
 }

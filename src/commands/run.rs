@@ -24,9 +24,9 @@ pub fn run() -> anyhow::Result<()> {
     let mut history: Vec<Vec<f32>> = vec![vec![]; network.neurons.len()];
     let mut times: Vec<f32> = Vec::new();
 
-    network.schedule_spike(input, 150.0, 0);
+    network.schedule_spike(input, 3.0, 0);
 
-    let steps = 200;
+    let steps = 500;
     for _ in 0..steps {
         network.tick(dt);
 
@@ -82,15 +82,15 @@ pub fn run() -> anyhow::Result<()> {
 pub fn build_sensory_circuit(network: &mut Network) -> anyhow::Result<(NeuronId, NeuronId)> {
     let default_cfg = NeuronConfig::default();
     let weak_connection = ConnectionSpec {
-        weight: 8.0,
+        weight: 1.0,
         delay: 1,
     };
     let strong_connection = ConnectionSpec {
-        weight: 150.0,
+        weight: 4.0,
         delay: 1,
     };
     let inhibitory_conn = ConnectionSpec {
-        weight: -16.0,
+        weight: -1.0,
         delay: 1,
     };
 
