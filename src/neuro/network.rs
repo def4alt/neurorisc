@@ -17,7 +17,7 @@ impl Network {
         }
     }
 
-    pub fn resize_events(&mut self) {
+    pub fn resize_events(&mut self, dt: f32) {
         let max_delay = self
             .adjacency_list
             .iter()
@@ -26,7 +26,8 @@ impl Network {
             .max()
             .unwrap_or(0);
 
-        let ring_size = (max_delay + 1) as usize;
+        let scaled_max_delay = (max_delay as f32 / dt).ceil() as usize;
+        let ring_size = scaled_max_delay + 2;
 
         self.events.resize(ring_size, Vec::new());
     }
@@ -43,25 +44,23 @@ impl Network {
         let buffer_len = self.events.len();
         let current_slot = self.t % buffer_len;
 
-        let now = std::mem::take(&mut self.events[current_slot]);
+        let events_now = std::mem::take(&mut self.events[current_slot]);
 
-        println!("BEGINNING");
-        println!("{:#?}", self.neurons.iter().cloned());
+        for (id, weight) in events_now {
+            self.neurons[id].i_syn += weight;
+        }
 
-        // Leak
         for neuron in &mut self.neurons {
-            neuron.v = neuron.v - (neuron.v - neuron.v_rest) * (dt / neuron.tau_m);
+            let i_decay = neuron.i_syn * (dt / neuron.tau_syn);
+            neuron.i_syn -= i_decay;
+
+            if neuron.refractory_left == 0 {
+                let leak = -(neuron.v - neuron.v_rest);
+                let total_drive = leak + neuron.i_syn;
+
+                neuron.v += total_drive * (dt / neuron.tau_m);
+            }
         }
-
-        println!("LEAKED");
-        println!("{:#?}", self.neurons.iter().cloned());
-
-        for (id, weight) in now {
-            self.neurons[id].v += weight;
-        }
-
-        println!("WEIGHTED");
-        println!("{:#?}", self.neurons.iter().cloned());
 
         let mut spiked: Vec<NeuronId> = Vec::new();
 
@@ -79,14 +78,11 @@ impl Network {
             }
         }
 
-        println!("SPIKED");
-        println!("{:?}", spiked.iter().cloned());
-
         for id in spiked {
             let edges = self.adjacency_list[id].clone();
-
             for (target, weight, delay) in edges {
-                self.schedule_spike(target, weight, delay);
+                let ticks_delay = (delay as f32 / dt).ceil() as u32;
+                self.schedule_spike(target, weight, ticks_delay);
             }
         }
 
@@ -103,6 +99,8 @@ impl Network {
             theta: config.theta,
             refractory_period: config.refractory_period,
             refractory_left: 0,
+            i_syn: 0.0,
+            tau_syn: config.tau_syn,
         });
 
         self.adjacency_list.push(Vec::new());
