@@ -3,6 +3,7 @@ use plotly::{
     common::Mode,
     layout::{Axis, Shape, ShapeLine, ShapeType},
 };
+use rand::Rng;
 
 use crate::neuro::{
     motifs::{
@@ -80,12 +81,27 @@ pub fn run() -> anyhow::Result<()> {
 }
 
 pub fn build_sensory_circuit(network: &mut Network) -> anyhow::Result<(NeuronId, NeuronId)> {
+    let mut rng = rand::rng();
     let default_cfg = NeuronConfig::default();
-    let mut fast_cfg = NeuronConfig::default();
-    let mut slow_cfg = NeuronConfig::default();
 
-    fast_cfg.theta = -55.0;
-    slow_cfg.theta = -45.0;
+    let outputs: Vec<OutputSpec> = (0..3)
+        .map(|_| {
+            let mut cfg = default_cfg.clone();
+            cfg.theta += rng.random_range(-10.0..10.0);
+
+            let weight_noise = rng.random_range(-2.0..2.0);
+            let conn = ConnectionSpec {
+                weight: 4.0 + weight_noise,
+                delay: 1,
+            };
+
+            OutputSpec {
+                config: cfg,
+                connection: conn,
+            }
+        })
+        .collect();
+
     let weak_connection = ConnectionSpec {
         weight: 2.0,
         delay: 1,
@@ -101,28 +117,11 @@ pub fn build_sensory_circuit(network: &mut Network) -> anyhow::Result<(NeuronId,
 
     let input_id = network.add_neuron(NeuronKind::Excitatory, default_cfg);
 
-    let processing_layer = divergent_excitation(
-        network,
-        input_id,
-        vec![
-            OutputSpec {
-                config: fast_cfg,
-                connection: strong_connection,
-            },
-            OutputSpec {
-                config: default_cfg,
-                connection: strong_connection,
-            },
-            OutputSpec {
-                config: slow_cfg,
-                connection: strong_connection,
-            },
-        ],
-    )?;
+    let processing_layer = divergent_excitation(network, input_id, outputs)?;
 
     let exc_inputs = processing_layer
         .iter()
-        .map(|&id| (id, weak_connection))
+        .map(|&id| (id, strong_connection))
         .collect();
 
     let inh_targets = processing_layer
