@@ -6,5 +6,8 @@ edition = "2024"
 [dependencies]
 anyhow = "1.0.100"
 clap = { version = "4.5.53", features = ["derive"] }
+eframe = "0.33.3"
+egui = "0.33.3"
+egui_plot = "0.34.0"
 plotly = "0.13.5"
 rand = "0.9.2"

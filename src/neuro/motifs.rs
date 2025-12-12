@@ -5,7 +5,7 @@ use crate::neuro::{
 
 #[derive(Clone, Copy, Debug)]
 pub struct ConnectionSpec {
-    pub weight: f32,
+    pub weight: f64,
     pub delay: u32,
 }
 

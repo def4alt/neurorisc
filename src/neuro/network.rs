@@ -2,8 +2,8 @@ use crate::neuro::neuron::{Neuron, NeuronConfig, NeuronId, NeuronKind};
 
 pub struct Network {
     pub neurons: Vec<Neuron>,
-    pub adjacency_list: Vec<Vec<(NeuronId, f32, u32)>>, // (id, weight, delay)
-    pub events: Vec<Vec<(NeuronId, f32)>>,
+    pub adjacency_list: Vec<Vec<(NeuronId, f64, u32)>>, // (id, weight, delay)
+    pub events: Vec<Vec<(NeuronId, f64)>>,
     pub t: usize,
 }
 
@@ -17,7 +17,7 @@ impl Network {
         }
     }
 
-    pub fn resize_events(&mut self, dt: f32) {
+    pub fn resize_events(&mut self, dt: f64) {
         let max_delay = self
             .adjacency_list
             .iter()
@@ -26,13 +26,13 @@ impl Network {
             .max()
             .unwrap_or(0);
 
-        let scaled_max_delay = (max_delay as f32 / dt).ceil() as usize;
+        let scaled_max_delay = (max_delay as f64 / dt).ceil() as usize;
         let ring_size = scaled_max_delay + 2;
 
         self.events.resize(ring_size, Vec::new());
     }
 
-    pub fn schedule_spike(&mut self, target: NeuronId, weight: f32, delay: u32) {
+    pub fn schedule_spike(&mut self, target: NeuronId, weight: f64, delay: u32) {
         let buffer_len = self.events.len();
 
         let slot = (self.t + delay as usize) % buffer_len;
@@ -40,7 +40,7 @@ impl Network {
         self.events[slot].push((target, weight));
     }
 
-    pub fn tick(&mut self, dt: f32) {
+    pub fn tick(&mut self, dt: f64) {
         let buffer_len = self.events.len();
         let current_slot = self.t % buffer_len;
 
@@ -92,7 +92,7 @@ impl Network {
         for id in spiked {
             let edges = self.adjacency_list[id].clone();
             for (target, weight, delay) in edges {
-                let ticks_delay = (delay as f32 / dt).ceil() as u32;
+                let ticks_delay = (delay as f64 / dt).ceil() as u32;
                 self.schedule_spike(target, weight, ticks_delay);
             }
         }
@@ -126,7 +126,7 @@ impl Network {
         &mut self,
         pre: NeuronId,
         post: NeuronId,
-        weight: f32,
+        weight: f64,
         delay: u32,
     ) -> anyhow::Result<()> {
         if pre >= self.adjacency_list.len() || post >= self.neurons.len() {

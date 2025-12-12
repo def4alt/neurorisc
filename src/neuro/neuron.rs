@@ -9,30 +9,30 @@ pub type NeuronId = usize;
 #[derive(Clone, Debug)]
 pub struct Neuron {
     pub kind: NeuronKind,
-    pub v: f32,
-    pub v_rest: f32,
-    pub v_reset: f32,
-    pub tau_m: f32,
-    pub theta: f32,
+    pub v: f64,
+    pub v_rest: f64,
+    pub v_reset: f64,
+    pub tau_m: f64,
+    pub theta: f64,
     pub refractory_period: u32,
     pub refractory_left: u32,
-    pub g_exc: f32,
-    pub g_inh: f32,
-    pub e_exc: f32,
-    pub e_inh: f32,
-    pub tau_syn: f32,
+    pub g_exc: f64,
+    pub g_inh: f64,
+    pub e_exc: f64,
+    pub e_inh: f64,
+    pub tau_syn: f64,
 }
 
 #[derive(Clone, Copy, Debug)]
 pub struct NeuronConfig {
-    pub v_rest: f32,
-    pub v_reset: f32,
-    pub tau_m: f32,
-    pub theta: f32,
+    pub v_rest: f64,
+    pub v_reset: f64,
+    pub tau_m: f64,
+    pub theta: f64,
     pub refractory_period: u32,
-    pub tau_syn: f32,
-    pub e_exc: f32,
-    pub e_inh: f32,
+    pub tau_syn: f64,
+    pub e_exc: f64,
+    pub e_inh: f64,
 }
 
 impl Default for NeuronConfig {

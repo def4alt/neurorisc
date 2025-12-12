@@ -11,6 +11,7 @@ fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Commands::Run => commands::run::run()?,
+        Commands::Gui => commands::gui::run()?,
     }
 
     Ok(())

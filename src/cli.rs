@@ -15,4 +15,5 @@ pub struct Cli {
 #[derive(Subcommand, Debug)]
 pub enum Commands {
     Run,
+    Gui,
 }
