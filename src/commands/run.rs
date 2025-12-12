@@ -81,8 +81,13 @@ pub fn run() -> anyhow::Result<()> {
 
 pub fn build_sensory_circuit(network: &mut Network) -> anyhow::Result<(NeuronId, NeuronId)> {
     let default_cfg = NeuronConfig::default();
+    let mut fast_cfg = NeuronConfig::default();
+    let mut slow_cfg = NeuronConfig::default();
+
+    fast_cfg.theta = -55.0;
+    slow_cfg.theta = -45.0;
     let weak_connection = ConnectionSpec {
-        weight: 1.0,
+        weight: 2.0,
         delay: 1,
     };
     let strong_connection = ConnectionSpec {
@@ -90,7 +95,7 @@ pub fn build_sensory_circuit(network: &mut Network) -> anyhow::Result<(NeuronId,
         delay: 1,
     };
     let inhibitory_conn = ConnectionSpec {
-        weight: -1.0,
+        weight: -10.0,
         delay: 1,
     };
 
@@ -101,7 +106,7 @@ pub fn build_sensory_circuit(network: &mut Network) -> anyhow::Result<(NeuronId,
         input_id,
         vec![
             OutputSpec {
-                config: default_cfg,
+                config: fast_cfg,
                 connection: strong_connection,
             },
             OutputSpec {
@@ -109,7 +114,7 @@ pub fn build_sensory_circuit(network: &mut Network) -> anyhow::Result<(NeuronId,
                 connection: strong_connection,
             },
             OutputSpec {
-                config: default_cfg,
+                config: slow_cfg,
                 connection: strong_connection,
             },
         ],
