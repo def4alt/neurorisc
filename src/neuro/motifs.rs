@@ -1,5 +1,3 @@
-use std::{any, collections::btree_map::Entry};
-
 use crate::neuro::{
     network::Network,
     neuron::{NeuronConfig, NeuronId, NeuronKind},
@@ -7,8 +5,8 @@ use crate::neuro::{
 
 #[derive(Clone, Copy, Debug)]
 pub struct ConnectionSpec {
-    weight: f32,
-    delay: u32,
+    pub weight: f32,
+    pub delay: u32,
 }
 
 impl ConnectionSpec {
@@ -27,14 +25,14 @@ impl ConnectionSpec {
 
 #[derive(Clone, Copy, Debug)]
 pub struct InputSpec {
-    id: NeuronId,
-    connection: ConnectionSpec,
+    pub id: NeuronId,
+    pub connection: ConnectionSpec,
 }
 
 #[derive(Clone, Copy, Debug)]
 pub struct OutputSpec {
-    config: NeuronConfig,
-    connection: ConnectionSpec,
+    pub config: NeuronConfig,
+    pub connection: ConnectionSpec,
 }
 
 pub fn convergent_excitation(
@@ -54,7 +52,7 @@ pub fn convergent_excitation(
                 receiver,
                 input.connection.weight,
                 input.connection.delay,
-            );
+            )?;
             Ok(())
         })?;
 
@@ -78,7 +76,7 @@ pub fn divergent_excitation(
                 post,
                 output.connection.weight,
                 output.connection.delay,
-            );
+            )?;
 
             Ok(post)
         })
@@ -98,7 +96,7 @@ pub fn feedforward_excitation(
 
     let post = network.add_neuron(NeuronKind::Excitatory, output.config);
 
-    network.connect(pre, post, output.connection.weight, output.connection.delay);
+    network.connect(pre, post, output.connection.weight, output.connection.delay)?;
 
     Ok(post)
 }
@@ -115,8 +113,8 @@ pub fn feedback_excitation(
 
     let post = network.add_neuron(NeuronKind::Excitatory, config);
 
-    network.connect(pre, post, forward_edge.weight, forward_edge.delay);
-    network.connect(post, pre, feedback_edge.weight, feedback_edge.delay);
+    network.connect(pre, post, forward_edge.weight, forward_edge.delay)?;
+    network.connect(post, pre, feedback_edge.weight, feedback_edge.delay)?;
 
     Ok(post)
 }
@@ -131,7 +129,7 @@ pub fn disinhibition(
 
     let post = network.add_neuron(NeuronKind::Inhibitory, output.config);
 
-    network.connect(pre, post, output.connection.weight, output.connection.delay);
+    network.connect(pre, post, output.connection.weight, output.connection.delay)?;
 
     Ok(post)
 }
@@ -148,7 +146,7 @@ pub fn recurrent_excitation(network: &mut Network, inputs: &[InputSpec]) -> anyh
             if src.id == dst.id {
                 continue;
             }
-            network.connect(src.id, dst.id, src.connection.weight, src.connection.delay);
+            network.connect(src.id, dst.id, src.connection.weight, src.connection.delay)?;
         }
     }
 
@@ -177,21 +175,21 @@ pub fn feedforward_inhibition(
         forward,
         forward_connection.weight,
         forward_connection.delay,
-    );
+    )?;
 
     network.connect(
         pre,
         inhibitor,
         pre_inhibition_connection.weight,
         pre_inhibition_connection.delay,
-    );
+    )?;
 
     network.connect(
         inhibitor,
         forward,
         inhibition_connection.weight,
         inhibition_connection.delay,
-    );
+    )?;
 
     Ok((forward, inhibitor))
 }
@@ -218,21 +216,21 @@ pub fn feedback_inhibition(
         forward,
         forward_connection.weight,
         forward_connection.delay,
-    );
+    )?;
 
     network.connect(
         forward,
         inhibitor,
         pre_inhibition_connection.weight,
         pre_inhibition_connection.delay,
-    );
+    )?;
 
     network.connect(
         inhibitor,
         forward,
         inhibition_connection.weight,
         inhibition_connection.delay,
-    );
+    )?;
 
     Ok((forward, inhibitor))
 }
@@ -258,21 +256,21 @@ pub fn cross_inhibition_following(
     let inhib_a = network.add_neuron(NeuronKind::Inhibitory, inhib_a_config);
     let inhib_b = network.add_neuron(NeuronKind::Inhibitory, inhib_b_config);
 
-    network.connect(a_pre, inhib_a, a_pre_to_inhib.weight, a_pre_to_inhib.delay);
+    network.connect(a_pre, inhib_a, a_pre_to_inhib.weight, a_pre_to_inhib.delay)?;
     network.connect(
         inhib_a,
         b_post,
         inhib_to_b_post.weight,
         inhib_to_b_post.delay,
-    );
+    )?;
 
-    network.connect(b_pre, inhib_b, b_pre_to_inhib.weight, b_pre_to_inhib.delay);
+    network.connect(b_pre, inhib_b, b_pre_to_inhib.weight, b_pre_to_inhib.delay)?;
     network.connect(
         inhib_b,
         a_post,
         inhib_to_a_post.weight,
         inhib_to_a_post.delay,
-    );
+    )?;
 
     Ok((inhib_a, inhib_b))
 }
@@ -296,13 +294,13 @@ pub fn lateral_inhibition(
 
     let inhibitor = network.add_neuron(NeuronKind::Inhibitory, inhibitory_config);
 
-    excitatory.into_iter().for_each(|(id, connection)| {
+    excitatory.into_iter().try_for_each(|(id, connection)| {
         network.connect(id, inhibitor, connection.weight, connection.delay)
-    });
+    })?;
 
-    inhibitory.into_iter().for_each(|(id, connection)| {
+    inhibitory.into_iter().try_for_each(|(id, connection)| {
         network.connect(inhibitor, id, connection.weight, connection.delay)
-    });
+    })?;
 
     Ok(inhibitor)
 }
