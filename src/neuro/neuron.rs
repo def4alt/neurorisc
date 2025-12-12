@@ -18,6 +18,15 @@ pub struct Neuron {
     pub refractory_left: u32,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct NeuronConfig {
+    pub v_rest: f32,
+    pub v_reset: f32,
+    pub tau_m: f32,
+    pub theta: f32,
+    pub refractory_period: u32,
+}
+
 pub struct Synapse {
     pub pre: NeuronId,
     pub post: NeuronId,

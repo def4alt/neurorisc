@@ -1,49 +1,120 @@
 use crate::neuro::{
     network::Network,
-    neuron::{Neuron, NeuronId, NeuronKind},
+    neuron::{NeuronConfig, NeuronId, NeuronKind},
 };
 
-trait Builder {
-    fn add_neuron(
-        &mut self,
-        kind: NeuronKind,
-        v_rest: f32,
-        v_reset: f32,
-        tau_m: f32,
-        theta: f32,
-        refractory_period: u32,
-    ) -> NeuronId;
-
-    fn connect(&mut self, pre: NeuronId, post: NeuronId, weight: f32, delay: u32);
+#[derive(Clone, Copy, Debug)]
+pub struct ConnectionSpec {
+    weight: f32,
+    delay: u32,
 }
 
-impl Builder for Network {
-    fn add_neuron(
-        &mut self,
-        kind: NeuronKind,
-        v_rest: f32,
-        v_reset: f32,
-        tau_m: f32,
-        theta: f32,
-        refractory_period: u32,
-    ) -> NeuronId {
-        self.neurons.push(Neuron {
-            kind,
-            v: v_rest,
-            v_rest,
-            v_reset,
-            tau_m,
-            theta,
-            refractory_period,
-            refractory_left: 0,
-        });
-
-        self.adjacency_list.push(Vec::new());
-
-        self.neurons.len()
+impl ConnectionSpec {
+    pub fn ensure_excitatory(&self) -> anyhow::Result<()> {
+        anyhow::ensure!(self.weight.is_finite(), "weight must be finite");
+        anyhow::ensure!(self.weight >= 0.0, "excitatory weight must be >= 0");
+        Ok(())
     }
 
-    fn connect(&mut self, pre: NeuronId, post: NeuronId, weight: f32, delay: u32) {
-        self.adjacency_list[pre].push((post, weight, delay))
+    pub fn ensure_inhibitory(&self) -> anyhow::Result<()> {
+        anyhow::ensure!(self.weight.is_finite(), "weight must be finite");
+        anyhow::ensure!(self.weight <= 0.0, "inhibitory weight must be <= 0");
+        Ok(())
     }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct InputSpec {
+    id: NeuronId,
+    connection: ConnectionSpec,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct OutputSpec {
+    config: NeuronConfig,
+    connection: ConnectionSpec,
+}
+
+pub fn convergent_excitation(
+    network: &mut Network,
+    inputs: impl IntoIterator<Item = InputSpec>,
+    config: NeuronConfig,
+) -> anyhow::Result<NeuronId> {
+    let receiver = network.add_neuron(NeuronKind::Excitatory, config);
+
+    inputs
+        .into_iter()
+        .try_for_each(|input| -> anyhow::Result<()> {
+            input.connection.ensure_excitatory()?;
+
+            network.connect(
+                input.id,
+                receiver,
+                input.connection.weight,
+                input.connection.delay,
+            );
+            Ok(())
+        })?;
+
+    Ok(receiver)
+}
+
+pub fn divergent_excitation(
+    network: &mut Network,
+    neuron: NeuronId,
+    outputs: impl IntoIterator<Item = OutputSpec>,
+) -> anyhow::Result<Vec<NeuronId>> {
+    let neurons: anyhow::Result<Vec<NeuronId>> = outputs
+        .into_iter()
+        .map(|output| -> anyhow::Result<NeuronId> {
+            output.connection.ensure_excitatory()?;
+
+            let post = network.add_neuron(NeuronKind::Excitatory, output.config);
+
+            network.connect(
+                neuron,
+                post,
+                output.connection.weight,
+                output.connection.delay,
+            );
+
+            Ok(post)
+        })
+        .collect();
+
+    let neurons = neurons?;
+
+    Ok(neurons)
+}
+
+pub fn feedforward_excitation(
+    network: &mut Network,
+    pre: NeuronId,
+    output: OutputSpec,
+) -> anyhow::Result<NeuronId> {
+    output.connection.ensure_excitatory()?;
+
+    let post = network.add_neuron(NeuronKind::Excitatory, output.config);
+
+    network.connect(pre, post, output.connection.weight, output.connection.delay);
+
+    Ok(post)
+}
+
+pub fn feedback_excitation(
+    network: &mut Network,
+    pre: NeuronId,
+    config: NeuronConfig,
+    forward_edge: ConnectionSpec,
+    feedback_edge: ConnectionSpec,
+) -> anyhow::Result<NeuronId> {
+    forward_edge.ensure_excitatory()?;
+    feedback_edge.ensure_excitatory()?;
+
+    let post = network.add_neuron(NeuronKind::Excitatory, config);
+
+    network.connect(pre, post, forward_edge.weight, forward_edge.delay);
+    network.connect(post, pre, feedback_edge.weight, feedback_edge.delay);
+
+    Ok(post)
 }

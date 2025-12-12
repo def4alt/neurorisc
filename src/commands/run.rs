@@ -1,6 +1,6 @@
 use crate::neuro::{
     network::Network,
-    neuron::{Neuron, NeuronId},
+    neuron::{Neuron, NeuronId, NeuronKind},
 };
 
 pub fn run() -> anyhow::Result<()> {
@@ -18,12 +18,7 @@ pub fn run() -> anyhow::Result<()> {
 
     let events: Vec<Vec<(NeuronId, f32)>> = vec![Vec::new(); ring_size];
 
-    let mut network = Network {
-        neurons,
-        adjacency_list,
-        events,
-        t: 0,
-    };
+    let mut network = Network::new();
 
     Ok(())
 }
