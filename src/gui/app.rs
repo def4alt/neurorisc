@@ -1,4 +1,5 @@
 use egui_plot::{Line, Plot, PlotPoints};
+use egui_snarl::NodeId;
 use egui_snarl::ui::{SnarlStyle, SnarlWidget};
 
 use crate::{
@@ -67,11 +68,7 @@ impl App {
         });
 
         match compile_snarl_to_network(&self.editor.snarl, &self.editor.wires) {
-            Ok(mut compiled) => {
-                if let Some(input) = compiled.input_id {
-                    compiled.network.schedule_spike(input, 1.0, 0);
-                }
-
+            Ok(compiled) => {
                 self.history = vec![Vec::new(); compiled.network.neurons.len()];
                 self.compiled = Some(compiled);
                 self.editor.dirty = false;
@@ -79,6 +76,21 @@ impl App {
             Err(err) => {
                 eprintln!("Failed to compile graph: {err:?}");
                 self.compiled = None;
+            }
+        }
+    }
+
+    fn fire_stimulus(&mut self, stim_node: NodeId) {
+        let Some(compiled) = self.compiled.as_mut() else { return };
+
+        for (key, spec) in self.editor.wires.iter() {
+            if key.from.node != stim_node {
+                continue;
+            }
+            if let Some(&post) = compiled.node_to_neuron.get(&key.to.node) {
+                compiled
+                    .network
+                    .schedule_spike(post, spec.weight, spec.delay);
             }
         }
     }
@@ -113,26 +125,24 @@ impl eframe::App for App {
 
         if self.tab == Tab::Sim {
             egui::SidePanel::left("controls").show(ctx, |ui| {
-                ui.heading("Parameters");
-                ui.add(
-                    egui::Slider::new(&mut self.params.strong_weight, 0.0..=10.0)
-                        .text("Excitation"),
-                );
-                ui.add(
-                    egui::Slider::new(&mut self.params.inhibitory_weight, -20.0..=0.0)
-                        .text("Inhibition"),
-                );
-                ui.add(egui::Slider::new(&mut self.params.noise_amt, 0.0..=1.0).text("Noise"));
-                ui.separator();
-
-                if ui.button("Inject Spike").clicked() {
-                    if let Some(compiled) = self.compiled.as_mut() {
-                        if let Some(id) = compiled.input_id {
-                            compiled.network.schedule_spike(id, 1.0, 0);
+                ui.heading("Stimuli");
+                let stimuli: Vec<(NodeId, String)> = self
+                    .editor
+                    .snarl
+                    .node_ids()
+                    .filter_map(|(id, node)| {
+                        if let GraphNode::Stimulus(stim) = node {
+                            Some((id, stim.label.clone()))
+                        } else {
+                            None
                         }
+                    })
+                    .collect();
+                for (node_id, label) in stimuli {
+                    if ui.button(format!("Fire {label}")).clicked() {
+                        self.fire_stimulus(node_id);
                     }
                 }
-
                 ui.separator();
 
                 if ui.button("Rebuild / Reset").clicked() {
