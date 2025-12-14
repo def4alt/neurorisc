@@ -1,4 +1,4 @@
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum NeuronKind {
     Excitatory,
     Inhibitory,
@@ -14,7 +14,7 @@ pub struct NeuronState {
     pub g_inh: f64,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub struct NeuronConfig {
     pub v_rest: f64,
     pub v_reset: f64,

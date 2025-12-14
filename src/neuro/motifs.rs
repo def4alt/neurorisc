@@ -3,7 +3,7 @@ use crate::neuro::{
     neuron::{NeuronConfig, NeuronId, NeuronKind},
 };
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize, Default)]
 pub struct ConnectionSpec {
     pub weight: f64,
     pub delay: u32,
