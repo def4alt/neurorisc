@@ -60,7 +60,7 @@ impl eframe::App for App {
 
             for (i, neuron) in self.network.neurons.iter().enumerate() {
                 if i < self.history.len() {
-                    self.history[i].push(neuron.v as f64);
+                    self.history[i].push(neuron.state.v as f64);
                 }
             }
             ctx.request_repaint();

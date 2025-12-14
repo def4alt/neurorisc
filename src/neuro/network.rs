@@ -47,75 +47,61 @@ impl Network {
         let events_now = std::mem::take(&mut self.events[current_slot]);
 
         for (id, weight) in events_now {
+            let state = &mut self.neurons[id].state;
             if weight >= 0.0 {
-                self.neurons[id].g_exc += weight;
+                state.g_exc += weight;
             } else {
-                self.neurons[id].g_inh -= weight;
-            }
-        }
-
-        for neuron in &mut self.neurons {
-            let decay_exc = neuron.g_exc * (dt / neuron.tau_syn);
-            let decay_inh = neuron.g_inh * (dt / neuron.tau_syn);
-
-            neuron.g_exc -= decay_exc;
-            neuron.g_inh -= decay_inh;
-
-            if neuron.refractory_left == 0 {
-                let i_leak = -(neuron.v - neuron.v_rest);
-
-                let i_exc = neuron.g_exc * (neuron.e_exc - neuron.v);
-                let i_inh = neuron.g_inh * (neuron.e_inh - neuron.v);
-
-                let total_current = i_leak + i_exc + i_inh;
-
-                neuron.v += total_current * (dt / neuron.tau_m);
+                state.g_inh -= weight;
             }
         }
 
         let mut spiked: Vec<NeuronId> = Vec::new();
 
         for (id, neuron) in self.neurons.iter_mut().enumerate() {
-            if neuron.refractory_left > 0 {
-                neuron.refractory_left -= 1;
-                neuron.v = neuron.v_reset;
+            let state = &mut neuron.state;
+            let config = neuron.config;
+
+            let decay = (-dt / config.tau_syn).exp();
+            state.g_exc *= decay;
+            state.g_inh *= decay;
+
+            if state.refractory_left > 0 {
+                state.refractory_left -= 1;
+                state.v = config.v_reset;
                 continue;
             }
 
-            if neuron.v >= neuron.theta {
-                neuron.v = neuron.v_reset;
-                neuron.refractory_left = neuron.refractory_period;
+            let i_leak = -(state.v - config.v_rest);
+
+            let i_exc = state.g_exc * (config.e_exc - state.v);
+            let i_inh = state.g_inh * (config.e_inh - state.v);
+
+            state.v += (i_leak + i_exc + i_inh) * (dt / config.tau_m);
+
+            if state.v >= config.theta {
+                state.v = config.v_reset;
+                state.refractory_left = config.refractory_period; // ticks
                 spiked.push(id);
             }
         }
 
-        for id in spiked {
-            let edges = self.adjacency_list[id].clone();
-            for (target, weight, delay) in edges {
-                let ticks_delay = (delay as f64 / dt).ceil() as u32;
-                self.schedule_spike(target, weight, ticks_delay);
+        let mut to_schedule: Vec<(NeuronId, f64, u32)> = Vec::new();
+
+        for &id in &spiked {
+            for &(target, weight, delay) in &self.adjacency_list[id] {
+                to_schedule.push((target, weight, delay));
             }
+        }
+
+        for (target, weight, delay) in to_schedule {
+            self.schedule_spike(target, weight, delay);
         }
 
         self.t += 1;
     }
 
     pub fn add_neuron(&mut self, kind: NeuronKind, config: NeuronConfig) -> NeuronId {
-        self.neurons.push(Neuron {
-            kind,
-            v: config.v_rest,
-            v_rest: config.v_rest,
-            v_reset: config.v_reset,
-            tau_m: config.tau_m,
-            theta: config.theta,
-            refractory_period: config.refractory_period,
-            refractory_left: 0,
-            g_exc: 0.0,
-            g_inh: 0.0,
-            e_exc: config.e_exc,
-            e_inh: config.e_inh,
-            tau_syn: config.tau_syn,
-        });
+        self.neurons.push(Neuron::new(kind, config));
 
         self.adjacency_list.push(Vec::new());
 

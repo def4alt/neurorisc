@@ -35,10 +35,10 @@ pub fn run() -> anyhow::Result<()> {
         times.push(network.t as f64);
 
         for (id, neuron) in network.neurons.iter().enumerate() {
-            let display_v = if neuron.refractory_left == neuron.refractory_period {
+            let display_v = if neuron.state.refractory_left == neuron.config.refractory_period {
                 40.0
             } else {
-                neuron.v
+                neuron.state.v
             };
 
             history[id].push(display_v);

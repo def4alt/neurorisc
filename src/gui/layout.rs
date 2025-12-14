@@ -114,7 +114,7 @@ pub fn draw_circuit(
 
     for (id, neuron) in neurons.iter().enumerate() {
         if let Some(pos) = positions.get(&id) {
-            let v = neuron.v;
+            let v = neuron.state.v;
             let t = ((v - -70.0) / (-45.0 - -70.0)).clamp(0.0, 1.0) as f32;
 
             let base_color = get_neuron_color(id);
