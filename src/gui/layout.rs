@@ -48,7 +48,6 @@ fn calculate_layout(
     let mut positions = HashMap::new();
     let max_layer = layers.values().max().cloned().unwrap_or(0);
 
-    // Offset to center the whole graph
     let total_width = max_layer as f32 * spacing.x;
     let start_x = center.x - (total_width / 2.0);
 

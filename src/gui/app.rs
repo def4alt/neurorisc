@@ -170,11 +170,15 @@ impl eframe::App for App {
                     let from_label = match self.editor.snarl.get_node(key.from.node) {
                         Some(GraphNode::Neuron(n)) => n.label.as_str(),
                         Some(GraphNode::Stimulus(s)) => s.label.as_str(),
+                        Some(GraphNode::Probe(p)) => p.label.as_str(),
+                        Some(GraphNode::Motif(m)) => m.label.as_str(),
                         None => "?",
                     };
                     let to_label = match self.editor.snarl.get_node(key.to.node) {
                         Some(GraphNode::Neuron(n)) => n.label.as_str(),
                         Some(GraphNode::Stimulus(s)) => s.label.as_str(),
+                        Some(GraphNode::Probe(p)) => p.label.as_str(),
+                        Some(GraphNode::Motif(m)) => m.label.as_str(),
                         None => "?",
                     };
 

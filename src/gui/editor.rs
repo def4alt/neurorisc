@@ -5,7 +5,7 @@ use egui_snarl::{
 };
 
 use crate::{
-    gui::builder::{GraphNode, NeuronSpec, WireKey},
+    gui::builder::{GraphNode, NeuronSpec, NeuronUiSpec, WireKey},
     neuro::{
         motifs::ConnectionSpec,
         neuron::{NeuronConfig, NeuronKind},
@@ -21,11 +21,19 @@ pub struct GraphViewer<'a> {
 impl<'a> GraphViewer<'a> {
     fn pin_color(&self, node: NodeId, snarl: &Snarl<GraphNode>) -> Color32 {
         match snarl.get_node(node) {
-            Some(GraphNode::Neuron(spec)) => match spec.kind {
-                NeuronKind::Excitatory => Color32::from_rgb(80, 180, 120),
-                NeuronKind::Inhibitory => Color32::from_rgb(220, 100, 100),
-            },
+            Some(GraphNode::Neuron(spec)) => {
+                if let Some([r, g, b, a]) = spec.ui.color_hint {
+                    Color32::from_rgba_unmultiplied(r, g, b, a)
+                } else {
+                    match spec.kind {
+                        NeuronKind::Excitatory => Color32::from_rgb(80, 180, 120),
+                        NeuronKind::Inhibitory => Color32::from_rgb(220, 100, 100),
+                    }
+                }
+            }
             Some(GraphNode::Stimulus(_)) => Color32::from_rgb(90, 140, 220),
+            Some(GraphNode::Probe(_)) => Color32::from_rgb(150, 150, 150),
+            Some(GraphNode::Motif(_)) => Color32::from_rgb(160, 110, 200),
             None => Color32::GRAY,
         }
     }
@@ -126,6 +134,10 @@ impl<'a> SnarlViewer<GraphNode> for GraphViewer<'a> {
             (from_node, to_node),
             (GraphNode::Neuron(_), GraphNode::Neuron(_))
                 | (GraphNode::Stimulus(_), GraphNode::Neuron(_))
+                | (GraphNode::Neuron(_), GraphNode::Probe(_))
+                | (GraphNode::Stimulus(_), GraphNode::Probe(_))
+                | (GraphNode::Motif(_), GraphNode::Neuron(_))
+                | (GraphNode::Neuron(_), GraphNode::Motif(_))
         );
         if !allowed || from.id.node == to.id.node {
             return;
@@ -217,15 +229,27 @@ impl<'a> SnarlViewer<GraphNode> for GraphViewer<'a> {
         match node {
             GraphNode::Neuron(n) => n.label.clone(),
             GraphNode::Stimulus(s) => s.label.clone(),
+            GraphNode::Probe(p) => p.label.clone(),
+            GraphNode::Motif(m) => m.label.clone(),
         }
     }
 
     fn inputs(&mut self, _node: &GraphNode) -> usize {
-        1
-    } // dendrites
+        match _node {
+            GraphNode::Neuron(_) => 1,   // dendrites
+            GraphNode::Stimulus(_) => 0, // source only
+            GraphNode::Probe(_) => 1,    // subscribes
+            GraphNode::Motif(_) => 1,    // simple passthrough by default
+        }
+    }
     fn outputs(&mut self, _node: &GraphNode) -> usize {
-        1
-    } // axon
+        match _node {
+            GraphNode::Neuron(_) => 1,   // axon
+            GraphNode::Stimulus(_) => 1, // spike out
+            GraphNode::Probe(_) => 0,    // sink
+            GraphNode::Motif(_) => 1,    // passthrough / expansion hook
+        }
+    }
 
     fn show_input(
         &mut self,
@@ -233,7 +257,13 @@ impl<'a> SnarlViewer<GraphNode> for GraphViewer<'a> {
         ui: &mut Ui,
         snarl: &mut Snarl<GraphNode>,
     ) -> impl egui_snarl::ui::SnarlPin + 'static {
-        ui.label("in");
+        let label = match snarl.get_node(pin.id.node) {
+            Some(GraphNode::Probe(_)) => "probe",
+            Some(GraphNode::Neuron(_)) => "in",
+            Some(GraphNode::Motif(_)) => "in",
+            _ => "in",
+        };
+        ui.label(label);
         PinInfo::circle()
             .with_fill(self.pin_color(pin.id.node, snarl))
             .with_wire_style(WireStyle::AxisAligned { corner_radius: 8.0 })
@@ -245,7 +275,12 @@ impl<'a> SnarlViewer<GraphNode> for GraphViewer<'a> {
         ui: &mut Ui,
         snarl: &mut Snarl<GraphNode>,
     ) -> impl egui_snarl::ui::SnarlPin + 'static {
-        ui.label("out");
+        let label = match snarl.get_node(pin.id.node) {
+            Some(GraphNode::Stimulus(_)) => "stim",
+            Some(GraphNode::Motif(_)) => "out",
+            _ => "out",
+        };
+        ui.label(label);
         PinInfo::circle()
             .with_fill(self.pin_color(pin.id.node, snarl))
             .with_wire_style(WireStyle::AxisAligned { corner_radius: 8.0 })
@@ -263,6 +298,34 @@ impl<'a> SnarlViewer<GraphNode> for GraphViewer<'a> {
                     label: "Neuron".to_string(),
                     kind: NeuronKind::Excitatory,
                     config: NeuronConfig::default(),
+                    ui: NeuronUiSpec::default(),
+                }),
+            );
+            *self.dirty = true;
+            ui.close();
+        }
+        if ui.button("Add stimulus").clicked() {
+            snarl.insert_node(
+                pos,
+                GraphNode::Stimulus(crate::gui::builder::StimulusSpec {
+                    label: "Stimulus".to_string(),
+                    mode: crate::gui::builder::StimulusMode::ManualPulse { amplitude: 1.0 },
+                    enabled: true,
+                    ui: crate::gui::builder::StimulusUiSpec { trigger_button: true },
+                }),
+            );
+            *self.dirty = true;
+            ui.close();
+        }
+        if ui.button("Add probe").clicked() {
+            snarl.insert_node(
+                pos,
+                GraphNode::Probe(crate::gui::builder::ProbeSpec {
+                    label: "Probe".to_string(),
+                    mode: crate::gui::builder::ProbeMode::Spikes,
+                    window_ms: 100,
+                    downsample: 1,
+                    enabled: true,
                 }),
             );
             *self.dirty = true;
