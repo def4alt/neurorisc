@@ -17,7 +17,7 @@ impl Network {
         }
     }
 
-    pub fn resize_events(&mut self, dt: f64) {
+    pub fn resize_events(&mut self) {
         let max_delay = self
             .adjacency_list
             .iter()
@@ -26,10 +26,9 @@ impl Network {
             .max()
             .unwrap_or(0);
 
-        let scaled_max_delay = (max_delay as f64 / dt).ceil() as usize;
-        let ring_size = scaled_max_delay + 2;
+        let ring_size = max_delay + 2;
 
-        self.events.resize(ring_size, Vec::new());
+        self.events.resize(ring_size as usize, Vec::new());
     }
 
     pub fn schedule_spike(&mut self, target: NeuronId, weight: f64, delay: u32) {

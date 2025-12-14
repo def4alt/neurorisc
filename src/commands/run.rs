@@ -21,7 +21,7 @@ pub fn run() -> anyhow::Result<()> {
 
     let (input, _) = build_sensory_circuit(&mut network, &params)?;
 
-    network.resize_events(dt);
+    network.resize_events();
 
     let mut history: Vec<Vec<f64>> = vec![vec![]; network.neurons.len()];
     let mut times: Vec<f64> = Vec::new();

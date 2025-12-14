@@ -101,3 +101,13 @@ pub struct EditorState {
     pub wires: HashMap<WireKey, ConnectionSpec>,
     pub dirty: bool,
 }
+
+impl Default for EditorState {
+    fn default() -> Self {
+        Self {
+            snarl: Snarl::default(),
+            wires: HashMap::new(),
+            dirty: true,
+        }
+    }
+}

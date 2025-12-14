@@ -1,20 +1,14 @@
-use std::collections::HashMap;
-
-use egui::Id;
 use egui_plot::{Line, Plot, PlotPoints};
-use egui_snarl::{
-    Snarl,
-    ui::{SnarlStyle, SnarlWidget},
-};
+use egui_snarl::ui::{SnarlStyle, SnarlWidget};
 
 use crate::{
-    core::templates::{CircuitParams, build_sensory_circuit},
+    core::templates::CircuitParams,
     gui::{
-        builder::{GraphNode, WireKey},
+        builder::{EditorState, GraphNode, WireKey},
+        compiler::{CompiledGraph, compile_snarl_to_network},
         editor::GraphViewer,
         layout::{draw_circuit, get_neuron_color},
     },
-    neuro::{motifs::ConnectionSpec, network::Network, neuron::NeuronId},
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -24,25 +18,23 @@ enum Tab {
 }
 
 pub struct App {
-    network: Network,
     params: CircuitParams,
     history: Vec<Vec<f64>>,
     running: bool,
     time: f64,
     dt: f64,
-    input_id: Option<NeuronId>,
+    selected_wire: Option<WireKey>,
 
     tab: Tab,
 
-    snarl: Snarl<GraphNode>,
+    editor: EditorState,
     snarl_style: SnarlStyle,
-    wire_meta: HashMap<WireKey, ConnectionSpec>,
+    compiled: Option<CompiledGraph>,
 }
 
 impl App {
     pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
         let mut app = Self {
-            network: Network::new(),
             params: CircuitParams {
                 strong_weight: 4.0,
                 inhibitory_weight: -10.0,
@@ -52,44 +44,61 @@ impl App {
             running: false,
             time: 0.0,
             dt: 0.1,
-            input_id: None,
+            selected_wire: None,
 
             tab: Tab::Sim,
 
-            snarl: Snarl::default(),
+            editor: EditorState::default(),
             snarl_style: SnarlStyle::new(),
-            wire_meta: HashMap::new(),
+            compiled: None,
         };
 
-        app.reset();
+        app.rebuild_from_editor();
 
         app
     }
 
-    fn reset(&mut self) {
-        self.network = Network::new();
+    fn rebuild_from_editor(&mut self) {
         self.time = 0.0;
 
-        let (input, _) = build_sensory_circuit(&mut self.network, &self.params).unwrap();
-        self.input_id = Some(input);
+        self.editor.wires.retain(|k, _| {
+            self.editor.snarl.get_node(k.from.node).is_some()
+                && self.editor.snarl.get_node(k.to.node).is_some()
+        });
 
-        self.network.resize_events(self.dt);
+        match compile_snarl_to_network(&self.editor.snarl, &self.editor.wires) {
+            Ok(mut compiled) => {
+                if let Some(input) = compiled.input_id {
+                    compiled.network.schedule_spike(input, 1.0, 0);
+                }
 
-        self.history = vec![Vec::new(); self.network.neurons.len()];
-
-        self.network.schedule_spike(input, 1.0, 0);
+                self.history = vec![Vec::new(); compiled.network.neurons.len()];
+                self.compiled = Some(compiled);
+                self.editor.dirty = false;
+            }
+            Err(err) => {
+                eprintln!("Failed to compile graph: {err:?}");
+                self.compiled = None;
+            }
+        }
     }
 }
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
-        if self.running {
-            self.network.tick(self.dt);
-            self.time += self.dt;
+        if self.running && self.editor.dirty {
+            self.rebuild_from_editor();
+        }
 
-            for (i, neuron) in self.network.neurons.iter().enumerate() {
-                if i < self.history.len() {
-                    self.history[i].push(neuron.state.v as f64);
+        if self.running {
+            if let Some(compiled) = self.compiled.as_mut() {
+                compiled.network.tick(self.dt);
+                self.time += self.dt;
+
+                for (i, neuron) in compiled.network.neurons.iter().enumerate() {
+                    if let Some(history) = self.history.get_mut(i) {
+                        history.push(neuron.state.v);
+                    }
                 }
             }
             ctx.request_repaint();
@@ -117,15 +126,17 @@ impl eframe::App for App {
                 ui.separator();
 
                 if ui.button("Inject Spike").clicked() {
-                    if let Some(id) = self.input_id {
-                        self.network.schedule_spike(id, 1.0, 0);
+                    if let Some(compiled) = self.compiled.as_mut() {
+                        if let Some(id) = compiled.input_id {
+                            compiled.network.schedule_spike(id, 1.0, 0);
+                        }
                     }
                 }
 
                 ui.separator();
 
                 if ui.button("Rebuild / Reset").clicked() {
-                    self.reset();
+                    self.rebuild_from_editor();
                 }
 
                 if self.running {
@@ -133,7 +144,10 @@ impl eframe::App for App {
                         self.running = false;
                     }
                 } else if ui.button("Start").clicked() {
-                    self.running = true;
+                    if self.editor.dirty || self.compiled.is_none() {
+                        self.rebuild_from_editor();
+                    }
+                    self.running = self.compiled.is_some();
                 }
             });
         }
@@ -142,25 +156,77 @@ impl eframe::App for App {
             egui::SidePanel::right("connections").show(ctx, |ui| {
                 ui.heading("Connections");
 
-                for (key, spec) in self.wire_meta.iter_mut() {
-                    let from_label = match &self.snarl[key.from.node] {
-                        GraphNode::Neuron(n) => n.label.as_str(),
-                        GraphNode::Stimulus(_) => todo!(),
-                    };
-                    let to_label = match &self.snarl[key.to.node] {
-                        GraphNode::Neuron(n) => n.label.as_str(),
-                        GraphNode::Stimulus(_) => todo!(),
+                if self.editor.wires.is_empty() {
+                    ui.label("No synapses yet. Drag from one node to another to connect.");
+                }
+
+                let wire_keys: Vec<WireKey> = self.editor.wires.keys().copied().collect();
+
+                for key in wire_keys {
+                    let Some(spec) = self.editor.wires.get_mut(&key) else {
+                        continue;
                     };
 
+                    let from_label = match self.editor.snarl.get_node(key.from.node) {
+                        Some(GraphNode::Neuron(n)) => n.label.as_str(),
+                        Some(GraphNode::Stimulus(s)) => s.label.as_str(),
+                        None => "?",
+                    };
+                    let to_label = match self.editor.snarl.get_node(key.to.node) {
+                        Some(GraphNode::Neuron(n)) => n.label.as_str(),
+                        Some(GraphNode::Stimulus(s)) => s.label.as_str(),
+                        None => "?",
+                    };
+
+                    let selected = self.selected_wire == Some(key);
                     ui.group(|ui| {
-                        ui.label(format!("{from_label} -> {to_label}"));
-                        ui.add(
-                            egui::DragValue::new(&mut spec.weight)
-                                .speed(0.1)
-                                .prefix("w="),
-                        );
-                        ui.add(egui::DragValue::new(&mut spec.delay).speed(1).prefix("d="));
+                        if ui
+                            .selectable_label(selected, format!("{from_label} -> {to_label}"))
+                            .clicked()
+                        {
+                            self.selected_wire = Some(key);
+                        }
+                        let weight_changed = ui
+                            .add(
+                                egui::DragValue::new(&mut spec.weight)
+                                    .speed(0.1)
+                                    .prefix("w="),
+                            )
+                            .changed();
+                        let delay_changed = ui
+                            .add(egui::DragValue::new(&mut spec.delay).speed(1).prefix("d="))
+                            .changed();
+                        if weight_changed || delay_changed {
+                            self.editor.dirty = true;
+                            self.selected_wire = Some(key);
+                        }
                     });
+                }
+
+                if let Some(selected) = self.selected_wire {
+                    if let Some(spec) = self.editor.wires.get_mut(&selected) {
+                        ui.separator();
+                        ui.label("Selected synapse");
+                        let weight_changed = ui
+                            .add(
+                                egui::DragValue::new(&mut spec.weight)
+                                    .speed(0.1)
+                                    .prefix("Weight: "),
+                            )
+                            .on_hover_text("Positive = excitatory, negative = inhibitory")
+                            .changed();
+                        let delay_changed = ui
+                            .add(
+                                egui::DragValue::new(&mut spec.delay)
+                                    .speed(1)
+                                    .prefix("Delay (ticks): "),
+                            )
+                            .changed();
+
+                        if weight_changed || delay_changed {
+                            self.editor.dirty = true;
+                        }
+                    }
                 }
             });
         }
@@ -189,20 +255,28 @@ impl eframe::App for App {
                 ui.heading("Live Topology");
                 ui.allocate_ui(egui::Vec2::new(ui.available_width(), 400.0), |ui| {
                     ui.set_min_height(400.0);
-                    draw_circuit(&self.network.neurons, &self.network.adjacency_list, ui);
+                    if let Some(compiled) = &self.compiled {
+                        draw_circuit(
+                            &compiled.network.neurons,
+                            &compiled.network.adjacency_list,
+                            ui,
+                        );
+                    }
                 });
             }
 
             Tab::Editor => {
                 ui.heading("Editor");
                 let mut viewer = GraphViewer {
-                    wires: &mut self.wire_meta,
+                    wires: &mut self.editor.wires,
+                    dirty: &mut self.editor.dirty,
+                    selected_wire: &mut self.selected_wire,
                 };
 
                 SnarlWidget::new()
                     .id(egui::Id::new("neuro-snarl"))
                     .style(self.snarl_style)
-                    .show(&mut self.snarl, &mut viewer, ui);
+                    .show(&mut self.editor.snarl, &mut viewer, ui);
             }
         });
     }
