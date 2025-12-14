@@ -331,6 +331,19 @@ impl<'a> SnarlViewer<GraphNode> for GraphViewer<'a> {
             *self.dirty = true;
             ui.close();
         }
+        if ui.button("Add motif").clicked() {
+            snarl.insert_node(
+                pos,
+                GraphNode::Motif(crate::gui::builder::MotifSpec {
+                    label: "Motif".to_string(),
+                    motif: crate::gui::builder::MotifKind::DivergentExcitation,
+                    params: crate::gui::builder::MotifParams::default(),
+                    expansion: crate::gui::builder::ExpansionPolicy::Inline,
+                }),
+            );
+            *self.dirty = true;
+            ui.close();
+        }
     }
 
     fn has_node_menu(&mut self, _node: &GraphNode) -> bool {

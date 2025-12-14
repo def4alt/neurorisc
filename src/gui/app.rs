@@ -7,7 +7,7 @@ use crate::{
         builder::{EditorState, GraphNode, WireKey},
         compiler::{CompiledGraph, compile_snarl_to_network},
         editor::GraphViewer,
-        layout::{draw_circuit, get_neuron_color},
+        layout::{draw_snarl_topology, get_neuron_color},
     },
 };
 
@@ -259,13 +259,12 @@ impl eframe::App for App {
                 ui.heading("Live Topology");
                 ui.allocate_ui(egui::Vec2::new(ui.available_width(), 400.0), |ui| {
                     ui.set_min_height(400.0);
-                    if let Some(compiled) = &self.compiled {
-                        draw_circuit(
-                            &compiled.network.neurons,
-                            &compiled.network.adjacency_list,
-                            ui,
-                        );
-                    }
+                    draw_snarl_topology(
+                        &self.editor.snarl,
+                        &self.editor.wires,
+                        self.compiled.as_ref(),
+                        ui,
+                    );
                 });
             }
 
