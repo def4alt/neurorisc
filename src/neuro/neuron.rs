@@ -43,16 +43,9 @@ impl Default for NeuronConfig {
             tau_m: 20.0,          // Membrane time constant (ms)
             theta: -50.0,         // Firing threshold (mV)
             refractory_period: 5, // Absolute refractory period (timesteps/ms)
-            tau_syn: 5.0,
-            e_exc: 0.0,
-            e_inh: -70.0,
+            tau_syn: 5.0,         // Synaptic current decay (ms)
+            e_exc: 0.0,           // Excitatory synapse reversal potential (mV)
+            e_inh: -70.0,         // Inhibitory synapse reversal potential (mV)
         }
     }
-}
-
-pub struct Synapse {
-    pub pre: NeuronId,
-    pub post: NeuronId,
-    pub weight: f32,
-    pub delay: u32, // ms
 }

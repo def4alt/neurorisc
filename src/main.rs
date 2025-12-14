@@ -4,6 +4,7 @@ use clap::Parser;
 mod cli;
 mod commands;
 mod core;
+mod gui;
 mod neuro;
 
 fn main() -> anyhow::Result<()> {
