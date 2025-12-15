@@ -1,4 +1,3 @@
-use egui::{CursorIcon, UiBuilder};
 use egui_plot::{Line, Plot, PlotPoints};
 use egui_snarl::NodeId;
 use egui_snarl::ui::{SnarlStyle, SnarlWidget};
@@ -27,8 +26,6 @@ pub struct App {
     editor: EditorState,
     snarl_style: SnarlStyle,
     compiled: Option<CompiledGraph>,
-
-    sim_split: f32,
 }
 
 impl App {
@@ -44,8 +41,6 @@ impl App {
             editor: EditorState::default(),
             snarl_style: SnarlStyle::new(),
             compiled: None,
-
-            sim_split: 0.55,
         };
 
         app.rebuild_from_editor();
@@ -210,84 +205,31 @@ impl eframe::App for App {
 
         egui::CentralPanel::default().show(ctx, |ui| match self.tab {
             Tab::Sim => {
-                ui.heading("Live Graph + Topology");
+                egui::TopBottomPanel::top("plot_panel")
+                    .resizable(true)
+                    .default_height(260.0)
+                    .min_height(120.0)
+                    .show_inside(ui, |ui| {
+                        let plot = Plot::new("voltage_plot")
+                            .include_y(-70.0)
+                            .include_y(-45.0);
 
-                let total = ui.available_size();
-                let handle_h = 12.0;
-                let min_section = 80.0;
+                        plot.show(ui, |plot_ui| {
+                            for (i, neuron_history) in self.history.iter().enumerate() {
+                                let points: PlotPoints = neuron_history
+                                    .iter()
+                                    .enumerate()
+                                    .map(|(t, &v)| [t as f64, v])
+                                    .collect();
 
-                let (full_rect, _) = ui.allocate_exact_size(total, egui::Sense::hover());
-                let usable_height = (full_rect.height() - handle_h).max(min_section * 2.0);
-
-                let mut top_height =
-                    (usable_height * self.sim_split).clamp(min_section, usable_height - min_section);
-                self.sim_split = top_height / usable_height;
-
-                let rects_for = |top: f32| {
-                    let top_rect =
-                        egui::Rect::from_min_size(full_rect.min, egui::vec2(full_rect.width(), top));
-                    let handle_rect = egui::Rect::from_min_max(
-                        top_rect.left_bottom(),
-                        top_rect.left_bottom() + egui::vec2(full_rect.width(), handle_h),
-                    );
-                    let bottom_rect = egui::Rect::from_min_size(
-                        handle_rect.left_bottom(),
-                        egui::vec2(full_rect.width(), usable_height - top),
-                    );
-                    (top_rect, handle_rect, bottom_rect)
-                };
-
-                let (mut top_rect, mut handle_rect, mut bottom_rect) = rects_for(top_height);
-
-                let handle_id = ui.id().with("sim_splitter");
-                let handle = ui.interact(handle_rect, handle_id, egui::Sense::click_and_drag());
-                if handle.dragged() {
-                    let delta = ui.input(|i| i.pointer.delta().y);
-                    if delta.abs() > f32::EPSILON {
-                        let new_top = (top_height + delta).clamp(min_section, usable_height - min_section);
-                        if (new_top - top_height).abs() > f32::EPSILON {
-                            self.sim_split = new_top / usable_height;
-                            top_height = new_top;
-                            (top_rect, handle_rect, bottom_rect) = rects_for(top_height);
-                            ui.ctx().request_repaint();
-                        }
-                    }
-                }
-                let stroke_color = ui.visuals().widgets.inactive.fg_stroke.color;
-                let fill = ui.visuals().widgets.inactive.bg_fill.linear_multiply(0.4);
-                ui.painter().rect_filled(handle_rect, 2.0, fill);
-                ui.painter()
-                    .hline(handle_rect.x_range(), handle_rect.center().y, egui::Stroke::new(2.0, stroke_color));
-                if handle.hovered() {
-                    ui.output_mut(|o| o.cursor_icon = CursorIcon::ResizeVertical);
-                }
-
-                ui.scope_builder(UiBuilder::new().max_rect(top_rect), |ui| {
-                    ui.set_min_size(top_rect.size());
-                    let plot = Plot::new("voltage_plot")
-                        .height(top_rect.height())
-                        .view_aspect(2.0)
-                        .include_y(-70.0)
-                        .include_y(-45.0);
-
-                    plot.show(ui, |plot_ui| {
-                        for (i, neuron_history) in self.history.iter().enumerate() {
-                            let points: PlotPoints = neuron_history
-                                .iter()
-                                .enumerate()
-                                .map(|(t, &v)| [t as f64, v])
-                                .collect();
-
-                            let color = get_neuron_color(i);
-                            plot_ui.line(Line::new(format!("Neuron {}", i), points).color(color));
-                        }
+                                let color = get_neuron_color(i);
+                                plot_ui.line(Line::new(format!("Neuron {}", i), points).color(color));
+                            }
+                        });
                     });
-                });
 
-                ui.scope_builder(UiBuilder::new().max_rect(bottom_rect), |ui| {
-                    ui.set_min_size(bottom_rect.size());
+                egui::CentralPanel::default().show_inside(ui, |ui| {
                     ui.heading("Live Topology");
-                    ui.set_min_height(bottom_rect.height() - 24.0);
                     draw_snarl_topology(
                         &self.editor.snarl,
                         &self.editor.wires,
