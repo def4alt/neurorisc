@@ -74,14 +74,81 @@ impl App {
             return;
         };
 
-        for (key, spec) in self.editor.wires.iter() {
-            if key.from.node != stim_node {
-                continue;
-            }
-            if let Some(&post) = compiled.node_to_neuron.get(&key.to.node) {
+        let Some(GraphNode::Stimulus(stim)) = self.editor.snarl.get_node(stim_node) else {
+            return;
+        };
+        if !stim.enabled {
+            return;
+        }
+
+        let outgoing: Vec<_> = self
+            .editor
+            .wires
+            .iter()
+            .filter_map(|(key, spec)| {
+                if key.from.node == stim_node {
+                    compiled
+                        .node_to_neuron
+                        .get(&key.to.node)
+                        .copied()
+                        .map(|post| (post, *spec))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        let to_ticks = |ms: u32| ((ms as f64 / self.dt).max(0.0)).round() as u32;
+        let base_tick = compiled.network.t as u32;
+
+        let mut schedule = |offset: u32, amp: f64| {
+            for (post, spec) in &outgoing {
+                let delay = spec.delay.saturating_add(offset);
                 compiled
                     .network
-                    .schedule_spike(post, spec.weight, spec.delay);
+                    .schedule_spike(*post, spec.weight * amp, delay);
+            }
+        };
+
+        match &stim.mode {
+            crate::gui::builder::StimulusMode::ManualPulse { amplitude } => {
+                schedule(0, *amplitude);
+            }
+            crate::gui::builder::StimulusMode::Poisson { rate, start, stop, .. } => {
+                let start_tick = to_ticks(*start);
+                let period_ticks = ((1000.0 / rate.max(1e-3)) / self.dt).max(1.0).round() as u32;
+                let end_tick = stop
+                    .map(|s| to_ticks(s.max(*start)))
+                    .unwrap_or(start_tick.saturating_add(period_ticks * 5));
+                let mut t = start_tick;
+                let mut count = 0;
+                while t <= end_tick && count < 128 {
+                    schedule(base_tick.saturating_add(t), 1.0);
+                    t = t.saturating_add(period_ticks);
+                    count += 1;
+                }
+            }
+            crate::gui::builder::StimulusMode::SpikeTrain { times, looped } => {
+                if times.is_empty() {
+                    return;
+                }
+                let total = *times.last().unwrap_or(&0);
+                let cycles = if *looped { 5 } else { 1 };
+                for c in 0..cycles {
+                    let base = base_tick.saturating_add(to_ticks(total * c));
+                    for &ms in times {
+                        schedule(base.saturating_add(to_ticks(ms)), 1.0);
+                    }
+                }
+            }
+            crate::gui::builder::StimulusMode::CurrentStep { amp, start, stop } => {
+                let start_tick = base_tick.saturating_add(to_ticks(*start));
+                let stop_tick = base_tick
+                    .saturating_add(to_ticks(*stop))
+                    .max(start_tick + 1);
+                for t in start_tick..=stop_tick {
+                    schedule(t, *amp);
+                }
             }
         }
     }
@@ -210,9 +277,7 @@ impl eframe::App for App {
                     .default_height(260.0)
                     .min_height(120.0)
                     .show_inside(ui, |ui| {
-                        let plot = Plot::new("voltage_plot")
-                            .include_y(-70.0)
-                            .include_y(-45.0);
+                        let plot = Plot::new("voltage_plot").include_y(-70.0).include_y(-45.0);
 
                         plot.show(ui, |plot_ui| {
                             for (i, neuron_history) in self.history.iter().enumerate() {
@@ -223,13 +288,13 @@ impl eframe::App for App {
                                     .collect();
 
                                 let color = get_neuron_color(i);
-                                plot_ui.line(Line::new(format!("Neuron {}", i), points).color(color));
+                                plot_ui
+                                    .line(Line::new(format!("Neuron {}", i), points).color(color));
                             }
                         });
                     });
 
                 egui::CentralPanel::default().show_inside(ui, |ui| {
-                    ui.heading("Live Topology");
                     draw_snarl_topology(
                         &self.editor.snarl,
                         &self.editor.wires,

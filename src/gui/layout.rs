@@ -95,8 +95,10 @@ pub fn draw_snarl_topology(
         .unwrap_or_default();
 
     let desired_size = ui.available_size_before_wrap();
-    let (response, painter) =
-        ui.allocate_painter(desired_size, egui::Sense::click_and_drag().union(egui::Sense::click()));
+    let (response, painter) = ui.allocate_painter(
+        desired_size,
+        egui::Sense::click_and_drag().union(egui::Sense::click()),
+    );
     let rect = response.rect.shrink(12.0);
 
     if response.double_clicked() {
@@ -119,8 +121,10 @@ pub fn draw_snarl_topology(
         }
     }
 
-    let nodes: Vec<(NodeId, GraphNode)> =
-        snarl.node_ids().map(|(id, node)| (id, node.clone())).collect();
+    let nodes: Vec<(NodeId, GraphNode)> = snarl
+        .node_ids()
+        .map(|(id, node)| (id, node.clone()))
+        .collect();
 
     let mut adjacency: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
     let mut indegree: HashMap<NodeId, usize> = HashMap::new();
@@ -171,7 +175,6 @@ pub fn draw_snarl_topology(
         }
     }
 
-    // Handle unvisited nodes (e.g., cycles) by chaining them after the deepest layer.
     let fallback_layer = layer_of.values().copied().max().unwrap_or(0) + 1;
     for (id, _) in &nodes {
         layer_of.entry(*id).or_insert(fallback_layer);
@@ -182,7 +185,6 @@ pub fn draw_snarl_topology(
     for (id, node) in &nodes {
         let label = node_label(node);
         let char_estimate = label.chars().count() as f32;
-        // Give text breathing room without ballooning excessively.
         let desired = (char_estimate * 7.5 + 18.0) * 0.5;
         let radius = desired.clamp(22.0, 48.0);
         radius_map.insert(*id, radius);
@@ -203,8 +205,7 @@ pub fn draw_snarl_topology(
         .collect();
 
     let horizontal_spacing = if layers.len() > 1 {
-        ((rect.width() - 2.0 * max_radius) / (layers.len() as f32 - 1.0))
-            .max(max_radius * 3.0)
+        ((rect.width() - 2.0 * max_radius) / (layers.len() as f32 - 1.0)).max(max_radius * 3.0)
     } else {
         0.0
     };
@@ -289,9 +290,8 @@ pub fn draw_snarl_topology(
 
             let label = node_label(node);
             let text_color = {
-                let luminance = 0.299 * fill.r() as f32
-                    + 0.587 * fill.g() as f32
-                    + 0.114 * fill.b() as f32;
+                let luminance =
+                    0.299 * fill.r() as f32 + 0.587 * fill.g() as f32 + 0.114 * fill.b() as f32;
                 if luminance > 140.0 {
                     egui::Color32::BLACK
                 } else {
