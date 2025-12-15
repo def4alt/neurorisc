@@ -5,7 +5,7 @@ use egui_snarl::{
 };
 
 use crate::{
-    gui::builder::{GraphNode, NeuronSpec, NeuronUiSpec, WireKey},
+    gui::builder::{GraphNode, NeuronSpec, WireKey},
     neuro::{
         motifs::ConnectionSpec,
         neuron::{NeuronConfig, NeuronKind},
@@ -15,22 +15,15 @@ use crate::{
 pub struct GraphViewer<'a> {
     pub wires: &'a mut std::collections::HashMap<WireKey, ConnectionSpec>,
     pub dirty: &'a mut bool,
-    pub selected_wire: &'a mut Option<WireKey>,
 }
 
 impl<'a> GraphViewer<'a> {
     fn pin_color(&self, node: NodeId, snarl: &Snarl<GraphNode>) -> Color32 {
         match snarl.get_node(node) {
-            Some(GraphNode::Neuron(spec)) => {
-                if let Some([r, g, b, a]) = spec.ui.color_hint {
-                    Color32::from_rgba_unmultiplied(r, g, b, a)
-                } else {
-                    match spec.kind {
-                        NeuronKind::Excitatory => Color32::from_rgb(80, 180, 120),
-                        NeuronKind::Inhibitory => Color32::from_rgb(220, 100, 100),
-                    }
-                }
-            }
+            Some(GraphNode::Neuron(spec)) => match spec.kind {
+                NeuronKind::Excitatory => Color32::from_rgb(80, 180, 120),
+                NeuronKind::Inhibitory => Color32::from_rgb(220, 100, 100),
+            },
             Some(GraphNode::Stimulus(_)) => Color32::from_rgb(90, 140, 220),
             Some(GraphNode::Probe(_)) => Color32::from_rgb(150, 150, 150),
             Some(GraphNode::Motif(_)) => Color32::from_rgb(160, 110, 200),
@@ -79,7 +72,7 @@ impl<'a> SnarlViewer<GraphNode> for GraphViewer<'a> {
                         [140.0, 20.0],
                         egui::DragValue::new(&mut spec.config.theta)
                             .speed(0.1)
-                            .prefix("θ "),
+                            .prefix("Theta "),
                     )
                     .changed();
                 changed |= ui
@@ -87,7 +80,7 @@ impl<'a> SnarlViewer<GraphNode> for GraphViewer<'a> {
                         [140.0, 20.0],
                         egui::DragValue::new(&mut spec.config.v_rest)
                             .speed(0.1)
-                            .prefix("Vrest "),
+                            .prefix("V_rest "),
                     )
                     .changed();
                 changed |= ui
@@ -95,7 +88,7 @@ impl<'a> SnarlViewer<GraphNode> for GraphViewer<'a> {
                         [140.0, 20.0],
                         egui::DragValue::new(&mut spec.config.v_reset)
                             .speed(0.1)
-                            .prefix("Vreset "),
+                            .prefix("V_reset "),
                     )
                     .changed();
                 changed |= ui
@@ -103,7 +96,7 @@ impl<'a> SnarlViewer<GraphNode> for GraphViewer<'a> {
                         [140.0, 20.0],
                         egui::DragValue::new(&mut spec.config.tau_m)
                             .speed(0.1)
-                            .prefix("τm "),
+                            .prefix("Tau_m "),
                     )
                     .changed();
                 changed |= ui
@@ -111,7 +104,7 @@ impl<'a> SnarlViewer<GraphNode> for GraphViewer<'a> {
                         [140.0, 20.0],
                         egui::DragValue::new(&mut spec.config.tau_syn)
                             .speed(0.1)
-                            .prefix("τsyn "),
+                            .prefix("Tau_syn "),
                     )
                     .changed();
             });
@@ -154,7 +147,6 @@ impl<'a> SnarlViewer<GraphNode> for GraphViewer<'a> {
             delay: 1,
         });
         *self.dirty = true;
-        *self.selected_wire = Some(key);
     }
 
     fn disconnect(&mut self, from: &OutPin, to: &InPin, snarl: &mut Snarl<GraphNode>) {
@@ -168,34 +160,24 @@ impl<'a> SnarlViewer<GraphNode> for GraphViewer<'a> {
         if self.wires.remove(&key).is_some() {
             *self.dirty = true;
         }
-        if *self.selected_wire == Some(key) {
-            *self.selected_wire = None;
-        }
     }
 
     fn drop_outputs(&mut self, pin: &OutPin, snarl: &mut Snarl<GraphNode>) {
         snarl.drop_outputs(pin.id);
 
         let mut removed = false;
-        let mut clear_selection = false;
         let pin_id = pin.id;
 
         self.wires.retain(|k, _| {
             let keep = k.from != pin_id;
             if !keep {
                 removed = true;
-                if *self.selected_wire == Some(*k) {
-                    clear_selection = true;
-                }
             }
             keep
         });
 
         if removed {
             *self.dirty = true;
-        }
-        if clear_selection {
-            *self.selected_wire = None;
         }
     }
 
@@ -203,25 +185,18 @@ impl<'a> SnarlViewer<GraphNode> for GraphViewer<'a> {
         snarl.drop_inputs(pin.id);
 
         let mut removed = false;
-        let mut clear_selection = false;
         let pin_id = pin.id;
 
         self.wires.retain(|k, _| {
             let keep = k.to != pin_id;
             if !keep {
                 removed = true;
-                if *self.selected_wire == Some(*k) {
-                    clear_selection = true;
-                }
             }
             keep
         });
 
         if removed {
             *self.dirty = true;
-        }
-        if clear_selection {
-            *self.selected_wire = None;
         }
     }
 
@@ -298,7 +273,6 @@ impl<'a> SnarlViewer<GraphNode> for GraphViewer<'a> {
                     label: "Neuron".to_string(),
                     kind: NeuronKind::Excitatory,
                     config: NeuronConfig::default(),
-                    ui: NeuronUiSpec::default(),
                 }),
             );
             *self.dirty = true;
@@ -311,7 +285,6 @@ impl<'a> SnarlViewer<GraphNode> for GraphViewer<'a> {
                     label: "Stimulus".to_string(),
                     mode: crate::gui::builder::StimulusMode::ManualPulse { amplitude: 1.0 },
                     enabled: true,
-                    ui: crate::gui::builder::StimulusUiSpec { trigger_button: true },
                 }),
             );
             *self.dirty = true;
@@ -323,8 +296,7 @@ impl<'a> SnarlViewer<GraphNode> for GraphViewer<'a> {
                 GraphNode::Probe(crate::gui::builder::ProbeSpec {
                     label: "Probe".to_string(),
                     mode: crate::gui::builder::ProbeMode::Spikes,
-                    window_ms: 100,
-                    downsample: 1,
+                    window: 100,
                     enabled: true,
                 }),
             );
@@ -337,7 +309,6 @@ impl<'a> SnarlViewer<GraphNode> for GraphViewer<'a> {
                 GraphNode::Motif(crate::gui::builder::MotifSpec {
                     label: "Motif".to_string(),
                     motif: crate::gui::builder::MotifKind::DivergentExcitation,
-                    params: crate::gui::builder::MotifParams::default(),
                     expansion: crate::gui::builder::ExpansionPolicy::Inline,
                 }),
             );
@@ -363,11 +334,6 @@ impl<'a> SnarlViewer<GraphNode> for GraphViewer<'a> {
             self.wires
                 .retain(|k, _| k.from.node != node && k.to.node != node);
             *self.dirty = true;
-            if let Some(selected) = *self.selected_wire {
-                if selected.from.node == node || selected.to.node == node {
-                    *self.selected_wire = None;
-                }
-            }
             ui.close();
         }
     }

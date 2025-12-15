@@ -2,14 +2,11 @@ use egui_plot::{Line, Plot, PlotPoints};
 use egui_snarl::NodeId;
 use egui_snarl::ui::{SnarlStyle, SnarlWidget};
 
-use crate::{
-    core::templates::CircuitParams,
-    gui::{
-        builder::{EditorState, GraphNode, WireKey},
-        compiler::{CompiledGraph, compile_snarl_to_network},
-        editor::GraphViewer,
-        layout::{draw_snarl_topology, get_neuron_color},
-    },
+use crate::gui::{
+    builder::{EditorState, GraphNode, WireKey},
+    compiler::{CompiledGraph, compile_snarl_to_network},
+    editor::GraphViewer,
+    layout::{draw_snarl_topology, get_neuron_color},
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -19,12 +16,10 @@ enum Tab {
 }
 
 pub struct App {
-    params: CircuitParams,
     history: Vec<Vec<f64>>,
     running: bool,
     time: f64,
     dt: f64,
-    selected_wire: Option<WireKey>,
 
     tab: Tab,
 
@@ -36,16 +31,10 @@ pub struct App {
 impl App {
     pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
         let mut app = Self {
-            params: CircuitParams {
-                strong_weight: 4.0,
-                inhibitory_weight: -10.0,
-                noise_amt: 0.1,
-            },
             history: vec![],
             running: false,
             time: 0.0,
             dt: 0.1,
-            selected_wire: None,
 
             tab: Tab::Sim,
 
@@ -81,7 +70,9 @@ impl App {
     }
 
     fn fire_stimulus(&mut self, stim_node: NodeId) {
-        let Some(compiled) = self.compiled.as_mut() else { return };
+        let Some(compiled) = self.compiled.as_mut() else {
+            return;
+        };
 
         for (key, spec) in self.editor.wires.iter() {
             if key.from.node != stim_node {
@@ -192,14 +183,8 @@ impl eframe::App for App {
                         None => "?",
                     };
 
-                    let selected = self.selected_wire == Some(key);
                     ui.group(|ui| {
-                        if ui
-                            .selectable_label(selected, format!("{from_label} -> {to_label}"))
-                            .clicked()
-                        {
-                            self.selected_wire = Some(key);
-                        }
+                        ui.label(format!("{from_label} -> {to_label}"));
                         let weight_changed = ui
                             .add(
                                 egui::DragValue::new(&mut spec.weight)
@@ -212,35 +197,8 @@ impl eframe::App for App {
                             .changed();
                         if weight_changed || delay_changed {
                             self.editor.dirty = true;
-                            self.selected_wire = Some(key);
                         }
                     });
-                }
-
-                if let Some(selected) = self.selected_wire {
-                    if let Some(spec) = self.editor.wires.get_mut(&selected) {
-                        ui.separator();
-                        ui.label("Selected synapse");
-                        let weight_changed = ui
-                            .add(
-                                egui::DragValue::new(&mut spec.weight)
-                                    .speed(0.1)
-                                    .prefix("Weight: "),
-                            )
-                            .on_hover_text("Positive = excitatory, negative = inhibitory")
-                            .changed();
-                        let delay_changed = ui
-                            .add(
-                                egui::DragValue::new(&mut spec.delay)
-                                    .speed(1)
-                                    .prefix("Delay (ticks): "),
-                            )
-                            .changed();
-
-                        if weight_changed || delay_changed {
-                            self.editor.dirty = true;
-                        }
-                    }
                 }
             });
         }
@@ -283,7 +241,6 @@ impl eframe::App for App {
                 let mut viewer = GraphViewer {
                     wires: &mut self.editor.wires,
                     dirty: &mut self.editor.dirty,
-                    selected_wire: &mut self.selected_wire,
                 };
 
                 SnarlWidget::new()

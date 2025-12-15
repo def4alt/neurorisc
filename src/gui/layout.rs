@@ -140,7 +140,6 @@ pub fn draw_snarl_topology(
         }
     }
 
-    // Draw wires.
     for (key, spec) in wires {
         let Some(&from_pos) = pos_map.get(&key.from.node) else {
             continue;

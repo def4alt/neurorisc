@@ -6,7 +6,6 @@ use egui_snarl::NodeId;
 pub struct CompiledGraph {
     pub network: Network,
     pub node_to_neuron: HashMap<NodeId, NeuronId>,
-    pub input_id: Option<NeuronId>,
 }
 
 use crate::{
@@ -78,22 +77,8 @@ pub fn compile_snarl_to_network(
 
     network.resize_events();
 
-    let mut input_id = None;
-    for (&node_id, &nid) in node_to_neuron.iter() {
-        if let GraphNode::Neuron(spec) = &snarl[node_id] {
-            if spec.label == "Input" {
-                input_id = Some(nid);
-                break;
-            }
-        }
-    }
-    if input_id.is_none() {
-        input_id = node_to_neuron.values().copied().next();
-    }
-
     Ok(CompiledGraph {
         network,
         node_to_neuron,
-        input_id,
     })
 }
