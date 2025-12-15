@@ -5,7 +5,7 @@ use egui_snarl::{
 };
 
 use crate::{
-    gui::builder::{GraphNode, NeuronSpec, WireKey},
+    gui::builder::{GraphNode, NeuronSpec, WireKey, neuron_body},
     neuro::{
         motifs::ConnectionSpec,
         neuron::{NeuronConfig, NeuronKind},
@@ -45,73 +45,15 @@ impl<'a> SnarlViewer<GraphNode> for GraphViewer<'a> {
         ui: &mut Ui,
         snarl: &mut Snarl<GraphNode>,
     ) {
-        if let Some(GraphNode::Neuron(spec)) = snarl.get_node_mut(node) {
-            ui.set_width(180.0);
-            ui.set_max_width(200.0);
+        let mut changed = false;
 
-            let mut changed = false;
+        changed |= match snarl.get_node_mut(node) {
+            Some(GraphNode::Neuron(spec)) => neuron_body(ui, spec),
+            _ => false,
+        };
 
-            ui.vertical(|ui| {
-                ui.label("Label");
-                let response =
-                    ui.add(egui::TextEdit::singleline(&mut spec.label).desired_width(140.0));
-                changed |= response.changed();
-
-                ui.label("Kind");
-                changed |= ui
-                    .selectable_value(&mut spec.kind, NeuronKind::Excitatory, "Excitatory")
-                    .changed();
-                changed |= ui
-                    .selectable_value(&mut spec.kind, NeuronKind::Inhibitory, "Inhibitory")
-                    .changed();
-
-                ui.separator();
-                ui.label("Config");
-                changed |= ui
-                    .add_sized(
-                        [140.0, 20.0],
-                        egui::DragValue::new(&mut spec.config.theta)
-                            .speed(0.1)
-                            .prefix("Theta "),
-                    )
-                    .changed();
-                changed |= ui
-                    .add_sized(
-                        [140.0, 20.0],
-                        egui::DragValue::new(&mut spec.config.v_rest)
-                            .speed(0.1)
-                            .prefix("V_rest "),
-                    )
-                    .changed();
-                changed |= ui
-                    .add_sized(
-                        [140.0, 20.0],
-                        egui::DragValue::new(&mut spec.config.v_reset)
-                            .speed(0.1)
-                            .prefix("V_reset "),
-                    )
-                    .changed();
-                changed |= ui
-                    .add_sized(
-                        [140.0, 20.0],
-                        egui::DragValue::new(&mut spec.config.tau_m)
-                            .speed(0.1)
-                            .prefix("Tau_m "),
-                    )
-                    .changed();
-                changed |= ui
-                    .add_sized(
-                        [140.0, 20.0],
-                        egui::DragValue::new(&mut spec.config.tau_syn)
-                            .speed(0.1)
-                            .prefix("Tau_syn "),
-                    )
-                    .changed();
-            });
-
-            if changed {
-                *self.dirty = true;
-            }
+        if changed {
+            *self.dirty = true;
         }
     }
 
@@ -229,16 +171,9 @@ impl<'a> SnarlViewer<GraphNode> for GraphViewer<'a> {
     fn show_input(
         &mut self,
         pin: &InPin,
-        ui: &mut Ui,
+        _: &mut Ui,
         snarl: &mut Snarl<GraphNode>,
     ) -> impl egui_snarl::ui::SnarlPin + 'static {
-        let label = match snarl.get_node(pin.id.node) {
-            Some(GraphNode::Probe(_)) => "probe",
-            Some(GraphNode::Neuron(_)) => "in",
-            Some(GraphNode::Motif(_)) => "in",
-            _ => "in",
-        };
-        ui.label(label);
         PinInfo::circle()
             .with_fill(self.pin_color(pin.id.node, snarl))
             .with_wire_style(WireStyle::AxisAligned { corner_radius: 8.0 })
@@ -247,15 +182,9 @@ impl<'a> SnarlViewer<GraphNode> for GraphViewer<'a> {
     fn show_output(
         &mut self,
         pin: &OutPin,
-        ui: &mut Ui,
+        _: &mut Ui,
         snarl: &mut Snarl<GraphNode>,
     ) -> impl egui_snarl::ui::SnarlPin + 'static {
-        let label = match snarl.get_node(pin.id.node) {
-            Some(GraphNode::Stimulus(_)) => "stim",
-            Some(GraphNode::Motif(_)) => "out",
-            _ => "out",
-        };
-        ui.label(label);
         PinInfo::circle()
             .with_fill(self.pin_color(pin.id.node, snarl))
             .with_wire_style(WireStyle::AxisAligned { corner_radius: 8.0 })
