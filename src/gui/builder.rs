@@ -186,9 +186,10 @@ pub fn stimulus_body(ui: &mut Ui, spec: &mut StimulusSpec) -> bool {
     ui.radio_value(
         &mut spec.mode,
         StimulusMode::CurrentStep {
-            amp: 10.0,
+            amp: 1.0,
             start: 0,
             stop: 10,
+            rate: 0.0,
         },
         "Current step",
     );
@@ -251,7 +252,12 @@ pub fn stimulus_body(ui: &mut Ui, spec: &mut StimulusSpec) -> bool {
                 }
             }
         }
-        StimulusMode::CurrentStep { amp, start, stop } => {
+        StimulusMode::CurrentStep {
+            amp,
+            start,
+            stop,
+            rate,
+        } => {
             changed |= ui
                 .add(egui::DragValue::new(amp).speed(0.01).prefix("Amplitude "))
                 .changed();
@@ -260,6 +266,9 @@ pub fn stimulus_body(ui: &mut Ui, spec: &mut StimulusSpec) -> bool {
                 .changed();
             changed |= ui
                 .add(egui::DragValue::new(stop).speed(1).prefix("Stop ms "))
+                .changed();
+            changed |= ui
+                .add(egui::DragValue::new(rate).speed(0.5).prefix("Rate Hz "))
                 .changed();
         }
     }

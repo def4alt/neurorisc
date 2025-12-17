@@ -33,6 +33,7 @@ pub enum StimulusMode {
         amp: f64,
         start: u32,
         stop: u32,
+        rate: f64,
     },
 }
 
@@ -132,12 +133,24 @@ impl StimulusRunner {
                     },
                 });
             }
-            StimulusMode::CurrentStep { amp, start, stop } => {
+            StimulusMode::CurrentStep {
+                amp,
+                start,
+                stop,
+                rate,
+            } => {
                 let start_tick = base_tick.saturating_add(to_ticks(*start));
                 let mut stop_tick = base_tick.saturating_add(to_ticks(*stop));
                 if stop_tick < start_tick {
                     stop_tick = start_tick;
                 }
+                let interval_ticks = if *rate <= 0.0 {
+                    1
+                } else {
+                    ((1000.0 / rate.max(1e-6)) / self.dt)
+                        .max(1.0)
+                        .round() as u64
+                };
 
                 self.stimuli.push(ActiveStimulus {
                     stimulus_id,
@@ -146,6 +159,8 @@ impl StimulusRunner {
                         amp: *amp,
                         start_tick,
                         stop_tick,
+                        next_tick: start_tick,
+                        interval_ticks,
                     },
                 });
             }
@@ -268,9 +283,19 @@ impl StimulusRunner {
                         amp,
                         start_tick,
                         stop_tick,
+                        next_tick,
+                        interval_ticks,
                     } => {
-                        if current_tick >= *start_tick && current_tick <= *stop_tick {
-                            network.schedule_spike(stimulus.neuron_id, *amp, 0);
+                        let mut events = 0;
+                        while current_tick >= *next_tick && *next_tick <= *stop_tick {
+                            if current_tick >= *start_tick {
+                                network.schedule_spike(stimulus.neuron_id, *amp, 0);
+                            }
+                            *next_tick = next_tick.saturating_add(*interval_ticks);
+                            events += 1;
+                            if events >= 1024 {
+                                break;
+                            }
                         }
 
                         current_tick > *stop_tick
@@ -325,5 +350,7 @@ enum ActiveStimulusMode {
         amp: f64,
         start_tick: u64,
         stop_tick: u64,
+        next_tick: u64,
+        interval_ticks: u64,
     },
 }
