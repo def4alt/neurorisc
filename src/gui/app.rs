@@ -2,12 +2,14 @@ use egui_plot::{Line, Plot, PlotPoints};
 use egui_snarl::NodeId;
 use egui_snarl::ui::{SnarlStyle, SnarlWidget};
 
+use crate::gui::builder::{StimulusMode, StimulusSpec, stimulus_body};
 use crate::gui::{
     builder::{EditorState, GraphNode, WireKey},
     compiler::{CompiledGraph, compile_snarl_to_network},
     editor::GraphViewer,
     layout::{draw_snarl_topology, get_neuron_color},
 };
+use crate::neuro::neuron::NeuronId;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Tab {
@@ -69,83 +71,61 @@ impl App {
         }
     }
 
-    fn fire_stimulus(&mut self, stim_node: NodeId) {
+    fn fire_stimulus_neuron(&mut self, neuron_id: NeuronId, spec: &StimulusSpec) {
+        println!("Firing {:#?}", spec.mode);
+
         let Some(compiled) = self.compiled.as_mut() else {
             return;
         };
 
-        let Some(GraphNode::Stimulus(stim)) = self.editor.snarl.get_node(stim_node) else {
-            return;
-        };
-        if !stim.enabled {
-            return;
-        }
-
-        let outgoing: Vec<_> = self
-            .editor
-            .wires
-            .iter()
-            .filter_map(|(key, spec)| {
-                if key.from.node == stim_node {
-                    compiled
-                        .node_to_neuron
-                        .get(&key.to.node)
-                        .copied()
-                        .map(|post| (post, *spec))
-                } else {
-                    None
-                }
-            })
-            .collect();
-
         let to_ticks = |ms: u32| ((ms as f64 / self.dt).max(0.0)).round() as u32;
-        let base_tick = compiled.network.t as u32;
 
         let mut schedule = |offset: u32, amp: f64| {
-            for (post, spec) in &outgoing {
-                let delay = spec.delay.saturating_add(offset);
-                compiled
-                    .network
-                    .schedule_spike(*post, spec.weight * amp, delay);
-            }
+            compiled.network.schedule_spike(neuron_id, amp, offset);
         };
 
-        match &stim.mode {
-            crate::gui::builder::StimulusMode::ManualPulse { amplitude } => {
-                schedule(0, *amplitude);
-            }
-            crate::gui::builder::StimulusMode::Poisson { rate, start, stop, .. } => {
+        match &spec.mode {
+            StimulusMode::ManualPulse { amplitude } => schedule(0, *amplitude),
+            StimulusMode::Poisson {
+                rate, start, stop, ..
+            } => {
                 let start_tick = to_ticks(*start);
                 let period_ticks = ((1000.0 / rate.max(1e-3)) / self.dt).max(1.0).round() as u32;
                 let end_tick = stop
                     .map(|s| to_ticks(s.max(*start)))
                     .unwrap_or(start_tick.saturating_add(period_ticks * 5));
+
                 let mut t = start_tick;
                 let mut count = 0;
                 while t <= end_tick && count < 128 {
-                    schedule(base_tick.saturating_add(t), 1.0);
+                    schedule(t, 1.0);
                     t = t.saturating_add(period_ticks);
                     count += 1;
                 }
             }
-            crate::gui::builder::StimulusMode::SpikeTrain { times, looped } => {
+            StimulusMode::SpikeTrain { times, looped } => {
                 if times.is_empty() {
                     return;
                 }
                 let total = *times.last().unwrap_or(&0);
-                let cycles = if *looped { 5 } else { 1 };
-                for c in 0..cycles {
-                    let base = base_tick.saturating_add(to_ticks(total * c));
+                let mut base: u32 = 0;
+
+                loop {
                     for &ms in times {
                         schedule(base.saturating_add(to_ticks(ms)), 1.0);
                     }
+                    if !*looped || total == 0 {
+                        break;
+                    }
+                    base = base.saturating_add(to_ticks(total));
+                    if base > 10_000 {
+                        break;
+                    }
                 }
             }
-            crate::gui::builder::StimulusMode::CurrentStep { amp, start, stop } => {
-                let start_tick = base_tick.saturating_add(to_ticks(*start));
-                let stop_tick = base_tick
-                    .saturating_add(to_ticks(*stop))
-                    .max(start_tick + 1);
+            StimulusMode::CurrentStep { amp, start, stop } => {
+                let start_tick = to_ticks(*start);
+                let stop_tick = to_ticks(*stop).max(start_tick + 1);
                 for t in start_tick..=stop_tick {
                     schedule(t, *amp);
                 }
@@ -184,23 +164,44 @@ impl eframe::App for App {
         if self.tab == Tab::Sim {
             egui::SidePanel::left("controls").show(ctx, |ui| {
                 ui.heading("Stimuli");
-                let stimuli: Vec<(NodeId, String)> = self
-                    .editor
-                    .snarl
-                    .node_ids()
-                    .filter_map(|(id, node)| {
-                        if let GraphNode::Stimulus(stim) = node {
-                            Some((id, stim.label.clone()))
-                        } else {
-                            None
+
+                let Some(compiled) = self.compiled.as_ref() else {
+                    ui.label("No stimuli yet");
+                    return;
+                };
+
+                let mut fire: Option<(NeuronId, crate::gui::builder::StimulusSpec)> = None;
+
+                for (stim_node, neuron_id) in compiled.inputs.iter().copied() {
+                    let Some(node) = self.editor.snarl.get_node_mut(stim_node) else {
+                        continue;
+                    };
+
+                    let GraphNode::Stimulus(stim) = node else {
+                        continue;
+                    };
+
+                    ui.group(|ui| {
+                        ui.label(&stim.label);
+
+                        if stimulus_body(ui, stim) {
+                            self.editor.dirty = true;
                         }
-                    })
-                    .collect();
-                for (node_id, label) in stimuli {
-                    if ui.button(format!("Fire {label}")).clicked() {
-                        self.fire_stimulus(node_id);
-                    }
+
+                        ui.add_space(0.6);
+
+                        ui.horizontal(|ui| {
+                            if ui.button("Fire").clicked() {
+                                fire = Some((neuron_id, stim.clone())); // record, execute after loop
+                            }
+                        });
+                    });
                 }
+
+                if let Some((neuron_id, spec)) = fire {
+                    self.fire_stimulus_neuron(neuron_id, &spec);
+                }
+
                 ui.separator();
 
                 if ui.button("Rebuild / Reset").clicked() {

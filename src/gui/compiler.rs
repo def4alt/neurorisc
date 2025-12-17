@@ -1,11 +1,13 @@
 use std::collections::HashMap;
 
 use anyhow::Context;
-use egui_snarl::NodeId;
+use egui_snarl::{InPinId, NodeId, OutPinId};
 
 pub struct CompiledGraph {
     pub network: Network,
     pub node_to_neuron: HashMap<NodeId, NeuronId>,
+    pub inputs: Vec<(NodeId, NeuronId)>,
+    pub outputs: Vec<(NodeId, NeuronId)>,
 }
 
 use crate::{
@@ -18,67 +20,75 @@ pub fn compile_snarl_to_network(
     wire_meta: &std::collections::HashMap<WireKey, ConnectionSpec>,
 ) -> anyhow::Result<CompiledGraph> {
     let mut network = Network::new();
+
     let mut node_to_neuron: HashMap<NodeId, NeuronId> = HashMap::new();
 
+    let mut inputs: Vec<(NodeId, NodeId)> = Vec::new();
+    let mut outputs: Vec<(NodeId, NodeId)> = Vec::new();
+
     for (node_id, node) in snarl.node_ids() {
-        if let GraphNode::Neuron(spec) = node {
-            let nid = network.add_neuron(spec.kind, spec.config);
-            node_to_neuron.insert(node_id, nid);
-        }
-    }
-
-    // Collect incoming neuron sources for motif passthrough.
-    let mut motif_inputs: HashMap<NodeId, Vec<NeuronId>> = HashMap::new();
-    for (key, _) in wire_meta.iter() {
-        if let Some(&pre) = node_to_neuron.get(&key.from.node) {
-            if matches!(snarl.get_node(key.to.node), Some(GraphNode::Motif(_))) {
-                motif_inputs.entry(key.to.node).or_default().push(pre);
+        match node {
+            GraphNode::Neuron(spec) => {
+                let nid = network.add_neuron(spec.kind, spec.config);
+                node_to_neuron.insert(node_id, nid);
             }
-        }
-    }
+            GraphNode::Stimulus(_) => {
+                let pin = snarl.out_pin(OutPinId {
+                    node: node_id,
+                    output: 0,
+                });
 
-    for (key, conn) in wire_meta.iter() {
-        let from_node = key.from.node;
-        let to_node = key.to.node;
-
-        match (snarl.get_node(from_node), snarl.get_node(to_node)) {
-            (Some(GraphNode::Neuron(_)), Some(GraphNode::Neuron(_))) => {
-                let Some(&pre) = node_to_neuron.get(&from_node) else {
-                    continue;
-                };
-                let Some(&post) = node_to_neuron.get(&to_node) else {
-                    continue;
-                };
-
-                network
-                    .connect(pre, post, conn.weight, conn.delay)
-                    .with_context(|| format!("connect failed: {:?} -> {:?}", from_node, to_node))?;
+                inputs.extend(pin.remotes.iter().map(|r| (node_id, r.node)));
             }
-            (Some(GraphNode::Motif(_)), Some(GraphNode::Neuron(_))) => {
-                let Some(&post) = node_to_neuron.get(&to_node) else {
-                    continue;
-                };
-                if let Some(sources) = motif_inputs.get(&from_node) {
-                    for &pre in sources {
-                        network
-                            .connect(pre, post, conn.weight, conn.delay)
-                            .with_context(|| {
-                                format!(
-                                    "motif passthrough failed: {:?} -> {:?}",
-                                    from_node, to_node
-                                )
-                            })?;
-                    }
-                }
+            GraphNode::Probe(_) => {
+                let pin = snarl.in_pin(InPinId {
+                    node: node_id,
+                    input: 0,
+                });
+
+                outputs.extend(pin.remotes.iter().map(|r| (node_id, r.node)));
             }
             _ => {}
         }
     }
 
+    for (key, conn) in wire_meta.iter() {
+        let from = key.from.node;
+        let to = key.to.node;
+
+        if let (Some(&pre), Some(&post)) = (node_to_neuron.get(&from), node_to_neuron.get(&to)) {
+            network
+                .connect(pre, post, conn.weight, conn.delay)
+                .with_context(|| format!("connect failed: {:?} -> {:?}", from, to))?;
+        }
+    }
+
     network.resize_events();
+
+    let inputs = inputs
+        .iter()
+        .filter_map(|(stimulus_id, neuron_id)| {
+            node_to_neuron
+                .get(neuron_id)
+                .copied()
+                .map(|nid| (*stimulus_id, nid))
+        })
+        .collect();
+
+    let outputs = outputs
+        .iter()
+        .filter_map(|(stimulus_id, neuron_id)| {
+            node_to_neuron
+                .get(neuron_id)
+                .copied()
+                .map(|nid| (*stimulus_id, nid))
+        })
+        .collect();
 
     Ok(CompiledGraph {
         network,
         node_to_neuron,
+        inputs,
+        outputs,
     })
 }

@@ -5,7 +5,7 @@ use egui_snarl::{
 };
 
 use crate::{
-    gui::builder::{GraphNode, NeuronSpec, WireKey, neuron_body, stimulus_body},
+    gui::builder::{GraphNode, NeuronSpec, WireKey, neuron_body},
     neuro::{
         motifs::ConnectionSpec,
         neuron::{NeuronConfig, NeuronKind},
@@ -34,7 +34,7 @@ impl<'a> GraphViewer<'a> {
 
 impl<'a> SnarlViewer<GraphNode> for GraphViewer<'a> {
     fn has_body(&mut self, node: &GraphNode) -> bool {
-        matches!(node, GraphNode::Neuron(_) | GraphNode::Stimulus(_))
+        matches!(node, GraphNode::Neuron(_))
     }
 
     fn show_body(
@@ -49,7 +49,6 @@ impl<'a> SnarlViewer<GraphNode> for GraphViewer<'a> {
 
         changed |= match snarl.get_node_mut(node) {
             Some(GraphNode::Neuron(spec)) => neuron_body(ui, spec),
-            Some(GraphNode::Stimulus(spec)) => stimulus_body(ui, spec),
             _ => false,
         };
 
@@ -79,16 +78,21 @@ impl<'a> SnarlViewer<GraphNode> for GraphViewer<'a> {
             return;
         }
 
-        snarl.connect(from.id, to.id);
+        if matches!(
+            (from_node, to_node),
+            (GraphNode::Neuron(_), GraphNode::Neuron(_))
+        ) {
+            let key = WireKey {
+                from: from.id,
+                to: to.id,
+            };
+            self.wires.entry(key).or_insert(ConnectionSpec {
+                weight: 1.0,
+                delay: 1,
+            });
+        }
 
-        let key = WireKey {
-            from: from.id,
-            to: to.id,
-        };
-        self.wires.entry(key).or_insert(ConnectionSpec {
-            weight: 1.0,
-            delay: 1,
-        });
+        snarl.connect(from.id, to.id);
         *self.dirty = true;
     }
 
