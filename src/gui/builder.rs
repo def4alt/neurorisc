@@ -6,6 +6,7 @@ use egui_snarl::{InPinId, OutPinId, Snarl};
 use crate::neuro::{
     motifs::ConnectionSpec,
     neuron::{NeuronConfig, NeuronKind},
+    stimuli::{StimulusMode, StimulusSpec},
 };
 
 use serde::{Deserialize, Serialize};
@@ -25,38 +26,6 @@ pub struct NeuronSpec {
     pub label: NodeLabel,
     pub kind: NeuronKind,
     pub config: NeuronConfig,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct StimulusSpec {
-    pub label: NodeLabel,
-    pub mode: StimulusMode,
-    pub enabled: bool,
-}
-
-#[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
-pub enum StimulusMode {
-    ManualPulse {
-        amplitude: f64,
-    },
-
-    Poisson {
-        rate: f64,
-        seed: u64,
-        start: u32,
-        stop: Option<u32>,
-    },
-
-    SpikeTrain {
-        times: Vec<u32>,
-        looped: bool,
-    },
-
-    CurrentStep {
-        amp: f64,
-        start: u32,
-        stop: u32,
-    },
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -187,12 +156,6 @@ pub fn stimulus_body(ui: &mut Ui, spec: &mut StimulusSpec) -> bool {
     let mut changed = false;
     ui.set_max_width(220.0);
 
-    ui.horizontal(|ui| {
-        ui.label("Label");
-        changed |= ui
-            .add(egui::TextEdit::singleline(&mut spec.label).desired_width(140.0))
-            .changed();
-    });
     changed |= ui.checkbox(&mut spec.enabled, "Enabled").changed();
 
     ui.separator();
@@ -236,7 +199,7 @@ pub fn stimulus_body(ui: &mut Ui, spec: &mut StimulusSpec) -> bool {
             changed |= ui
                 .add(
                     egui::DragValue::new(amplitude)
-                        .speed(0.1)
+                        .speed(0.01)
                         .prefix("Amplitude "),
                 )
                 .changed();
@@ -290,7 +253,7 @@ pub fn stimulus_body(ui: &mut Ui, spec: &mut StimulusSpec) -> bool {
         }
         StimulusMode::CurrentStep { amp, start, stop } => {
             changed |= ui
-                .add(egui::DragValue::new(amp).speed(0.1).prefix("Amplitude "))
+                .add(egui::DragValue::new(amp).speed(0.01).prefix("Amplitude "))
                 .changed();
             changed |= ui
                 .add(egui::DragValue::new(start).speed(1).prefix("Start ms "))

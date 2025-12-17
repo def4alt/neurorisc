@@ -29,7 +29,7 @@ impl Default for ViewTransform {
 fn node_label(node: &GraphNode) -> &str {
     match node {
         GraphNode::Neuron(n) => n.label.as_str(),
-        GraphNode::Stimulus(s) => s.label.as_str(),
+        GraphNode::Stimulus(_) => "Stimulus",
         GraphNode::Probe(p) => p.label.as_str(),
         GraphNode::Motif(m) => m.label.as_str(),
     }

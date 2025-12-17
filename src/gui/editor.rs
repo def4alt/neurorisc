@@ -9,6 +9,7 @@ use crate::{
     neuro::{
         motifs::ConnectionSpec,
         neuron::{NeuronConfig, NeuronKind},
+        stimuli::{StimulusMode, StimulusSpec},
     },
 };
 
@@ -150,7 +151,7 @@ impl<'a> SnarlViewer<GraphNode> for GraphViewer<'a> {
     fn title(&mut self, node: &GraphNode) -> String {
         match node {
             GraphNode::Neuron(n) => n.label.clone(),
-            GraphNode::Stimulus(s) => s.label.clone(),
+            GraphNode::Stimulus(_) => "Stimulus".to_string(),
             GraphNode::Probe(p) => p.label.clone(),
             GraphNode::Motif(m) => m.label.clone(),
         }
@@ -215,9 +216,8 @@ impl<'a> SnarlViewer<GraphNode> for GraphViewer<'a> {
         if ui.button("Add stimulus").clicked() {
             snarl.insert_node(
                 pos,
-                GraphNode::Stimulus(crate::gui::builder::StimulusSpec {
-                    label: "Stimulus".to_string(),
-                    mode: crate::gui::builder::StimulusMode::ManualPulse { amplitude: 1.0 },
+                GraphNode::Stimulus(StimulusSpec {
+                    mode: StimulusMode::ManualPulse { amplitude: 1.0 },
                     enabled: true,
                 }),
             );
