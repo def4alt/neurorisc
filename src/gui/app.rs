@@ -1,5 +1,9 @@
+use std::collections::HashMap;
+use std::fs;
+
 use egui_plot::{Line, Plot, PlotPoints};
 use egui_snarl::ui::{SnarlStyle, SnarlWidget};
+use serde::{Deserialize, Serialize};
 
 use crate::gui::builder::stimulus_body;
 use crate::gui::{
@@ -8,13 +12,25 @@ use crate::gui::{
     editor::GraphViewer,
     layout::{draw_snarl_topology, get_neuron_color},
 };
-use crate::neuro::neuron::NeuronId;
 use crate::neuro::stimuli::{StimulusRunner, StimulusSpec};
+use crate::neuro::{motifs::ConnectionSpec, neuron::NeuronId};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Tab {
     Sim,
     Editor,
+}
+
+#[derive(Serialize, Deserialize)]
+struct GraphSnapshot {
+    snarl: egui_snarl::Snarl<GraphNode>,
+    wires: HashMap<WireKey, ConnectionSpec>,
+}
+
+#[derive(Serialize)]
+struct GraphSnapshotRef<'a> {
+    snarl: &'a egui_snarl::Snarl<GraphNode>,
+    wires: &'a HashMap<WireKey, ConnectionSpec>,
 }
 
 pub struct App {
@@ -29,6 +45,8 @@ pub struct App {
     snarl_style: SnarlStyle,
     compiled: Option<CompiledGraph>,
     stimuli: StimulusRunner,
+    graph_path: String,
+    graph_status: Option<String>,
 }
 
 impl App {
@@ -46,6 +64,8 @@ impl App {
             snarl_style: SnarlStyle::new(),
             compiled: None,
             stimuli: StimulusRunner::new(dt),
+            graph_path: "graph.json".to_string(),
+            graph_status: None,
         };
 
         app.rebuild_from_editor();
@@ -85,6 +105,51 @@ impl App {
             println!("Firing {:#?}", spec.mode);
             self.stimuli
                 .fire(stimulus_id, neuron_id, spec, &compiled.network);
+        }
+    }
+
+    fn save_graph(&mut self) {
+        let path = self.graph_path.trim().to_string();
+        if path.is_empty() {
+            self.graph_status = Some("Save path is empty".to_string());
+            return;
+        }
+
+        let snapshot = GraphSnapshotRef {
+            snarl: &self.editor.snarl,
+            wires: &self.editor.wires,
+        };
+
+        match serde_json::to_string_pretty(&snapshot)
+            .map_err(|err| err.to_string())
+            .and_then(|data| fs::write(&path, data).map_err(|err| err.to_string()))
+        {
+            Ok(()) => self.graph_status = Some(format!("Saved to {path}")),
+            Err(err) => self.graph_status = Some(format!("Save failed: {err}")),
+        }
+    }
+
+    fn load_graph(&mut self) {
+        let path = self.graph_path.trim().to_string();
+        if path.is_empty() {
+            self.graph_status = Some("Load path is empty".to_string());
+            return;
+        }
+
+        let result = fs::read_to_string(&path)
+            .map_err(|err| err.to_string())
+            .and_then(|data| serde_json::from_str::<GraphSnapshot>(&data).map_err(|err| err.to_string()));
+
+        match result {
+            Ok(snapshot) => {
+                self.editor.snarl = snapshot.snarl;
+                self.editor.wires = snapshot.wires;
+                self.editor.dirty = true;
+                self.running = false;
+                self.rebuild_from_editor();
+                self.graph_status = Some(format!("Loaded {path}"));
+            }
+            Err(err) => self.graph_status = Some(format!("Load failed: {err}")),
         }
     }
 }
@@ -179,6 +244,25 @@ impl eframe::App for App {
 
         if self.tab == Tab::Editor {
             egui::SidePanel::right("connections").show(ctx, |ui| {
+                ui.heading("Graph");
+
+                ui.horizontal(|ui| {
+                    ui.label("Path");
+                    ui.text_edit_singleline(&mut self.graph_path);
+                });
+                ui.horizontal(|ui| {
+                    if ui.button("Save").clicked() {
+                        self.save_graph();
+                    }
+                    if ui.button("Load").clicked() {
+                        self.load_graph();
+                    }
+                });
+                if let Some(status) = &self.graph_status {
+                    ui.label(status);
+                }
+
+                ui.separator();
                 ui.heading("Connections");
 
                 if self.editor.wires.is_empty() {
